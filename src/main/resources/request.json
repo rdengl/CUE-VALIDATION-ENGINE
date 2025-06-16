@@ -1,0 +1,25 @@
+/*{
+  "user": {
+    "name": "",
+    "age": 61
+  },
+  "contact": {
+    "email": "invalidemail",
+    "phone": "1234567890"
+  }
+}*/
+
+// after making as per cue structure 
+
+{
+  "Request": {
+    "user": {
+      "name": "",
+      "age": 61
+    },
+    "contact": {
+      "email": "invalidemail",
+      "phone": "1234567890"
+    }
+  }
+}
