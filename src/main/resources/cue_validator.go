@@ -7,6 +7,7 @@ import "C"
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"cuelang.org/go/cue"
@@ -64,6 +65,34 @@ func validateRecursive(path string, schema cue.Value, data cue.Value, resultMap 
 		if schemaField.IncompleteKind() == cue.StructKind {
 			validateRecursive(fullPath, schemaField, dataField, resultMap)
 			continue
+		}
+
+		if schemaField.IncompleteKind() == cue.ListKind {
+			listIter, err := dataField.List()
+			if err != nil {
+				(*resultMap)[fullPath] = "Invalid array"
+				continue
+			}
+
+			schemaElem, _ := schemaField.Elem()
+			index := 0
+			for listIter.Next() {
+				item := listIter.Value()
+				itemPath := fmt.Sprintf("%s[%d]", fullPath, index)
+
+				if schemaElem.IncompleteKind() == cue.StructKind {
+					validateRecursive(itemPath, schemaElem, item, resultMap)
+				} else {
+					result := schemaElem.Unify(item)
+					if err := result.Validate(); err != nil {
+						msg := getCustomMessage(schemaElem)
+						if msg != "" {
+							(*resultMap)[itemPath] = msg
+						}
+					}
+				}
+				index++
+			}
 		}
 
 		result := schemaField.Unify(dataField)

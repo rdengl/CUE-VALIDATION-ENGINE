@@ -18,52 +18,52 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @RequestMapping("/validate-api")
 public class CueValidationController {
 
-    @PostMapping("/validate")
-    public Map<String,String> validate(@RequestBody CueValidationRequest request) {
-    	// db call to get schema
-    	String schema1 ="package Request\r\n"
-    			+ "#Request: {\r\n"
-    			+ "    name:  string\r\n"
-    			+ "    age:   int & >=18 & <=60\r\n"
-    			+ "    email: string & =~\"^.+@.+\\\\..+$\"\r\n"
-    			+ "}\r\n"
-    			+ "#Request\r\n";
-    	
-    	
-    	// take project request json
-    	String json1 ="{\r\n"
-    			+ "  \"name\": 1,\r\n"
-    			+ "  \"age\": 388,\r\n"
-    			+ "  \"email\": \"ram@example.com\"\r\n"
-    			+ "}\r\n"
-    			;
-    	
-    	
-    	
-    	 String json = "{\r\n"
-    	 		+ "    		          \"Request\": {\r\n"
-    	 		+ "    		            \"name\": {\r\n"
-    	 		+ "    		              \"first\": \"\",\r\n"
-    	 		+ "    		              \"last\": \"Doe\"\r\n"
-    	 		+ "    		            },\r\n"
-    	 		+ "    		            \"age\": 10,\r\n"
-    	 		+ "    		            \"email\": \"bademail\"\r\n"
-    	 		+ "    		          }\r\n"
-    	 		+ "    		        }";
+	@PostMapping("/validate")
+	public Map<String,String> validate(@RequestBody CueValidationRequest request) {
+		// db call to get schema
+		String schema1 ="package Request\r\n"
+				+ "#Request: {\r\n"
+				+ "    name:  string\r\n"
+				+ "    age:   int & >=18 & <=60\r\n"
+				+ "    email: string & =~\"^.+@.+\\\\..+$\"\r\n"
+				+ "}\r\n"
+				+ "#Request\r\n";
 
-    		        String schema = "Request: {\r\n"
-    		        		+ "    		          name: {\r\n"
-    		        		+ "    		            first: string & !=\"\"\r\n"
-    		        		+ "    		            last: string\r\n"
-    		        		+ "    		          }\r\n"
-    		        		+ "    		          age:   int & >=18 & <=60\r\n"
-    		        		+ "    		          email: string & =~\"^.+@.+\\\\..+$\"\r\n"
-    		        		+ "    		        }";
-    	
-        // Call Go DLL
-    		        
-    		        
-    		        String json2 = """
+
+		// take project request json
+		String json1 ="{\r\n"
+				+ "  \"name\": 1,\r\n"
+				+ "  \"age\": 388,\r\n"
+				+ "  \"email\": \"ram@example.com\"\r\n"
+				+ "}\r\n"
+				;
+
+
+
+		String json = "{\r\n"
+				+ "    		          \"Request\": {\r\n"
+				+ "    		            \"name\": {\r\n"
+				+ "    		              \"first\": \"\",\r\n"
+				+ "    		              \"last\": \"Doe\"\r\n"
+				+ "    		            },\r\n"
+				+ "    		            \"age\": 10,\r\n"
+				+ "    		            \"email\": \"bademail\"\r\n"
+				+ "    		          }\r\n"
+				+ "    		        }";
+
+		String schema = "Request: {\r\n"
+				+ "    		          name: {\r\n"
+				+ "    		            first: string & !=\"\"\r\n"
+				+ "    		            last: string\r\n"
+				+ "    		          }\r\n"
+				+ "    		          age:   int & >=18 & <=60\r\n"
+				+ "    		          email: string & =~\"^.+@.+\\\\..+$\"\r\n"
+				+ "    		        }";
+
+		// Call Go DLL
+
+
+		String json2 = """
     		                {
     		                  "Request": {
     		                    "name": "",
@@ -72,7 +72,7 @@ public class CueValidationController {
     		                  }
     		                }""";
 
-    		                String schema2 = """
+		String schema2 = """
     		                package validation
     		                Request: {
     		                    name: string
@@ -92,95 +92,144 @@ public class CueValidationController {
     		                        },
     		                    ]
     		                }""";
-    		        
-    		                
-    		               
-    		                
-    		                //-------------------------
-    		                
-    		                
-    		                
-	                        String schema4 = "Request: {\r\n"
-	                        		+ "  name:  string & !=\"\" @message(\"Name must not be empty\") @success(\"Name is valid\")\r\n"
-	                        		+ "  email: string & =~\"^.+@.+\\\\..+$\" @message(\"Invalid email format\") @success(\"Email is valid\")\r\n"
-	                        		+ "  age:   int & >=18 & <=60 @message(\"Age must be between 18 and 60\") @success(\"Age is valid\")\r\n"
-	                        		+ "}\r\n"
-	                        		+ "";
-	                        
-	                        String json4 = "{\r\n"
-	                        		+ "  \"Request\": {\r\n"
-	                        		+ "    \"name\": \"John Doe\",\r\n"
-	                        		+ "     \"email\": \"john.doe@example.com\",\r\n"
-	                        		+ "	 \"age\": 3\r\n"
-	                        		+ "  }\r\n"
-	                        		+ "}\r\n"
-	                        		+ "";
 
-    		            
-    		                        
-    		                        String schema5 = "Request: {\r\n"
-    		                        		+ "    name: string & !=\"\" @message(\"Name must not be empty\")\r\n"
-    		                        		+ "\r\n"
-    		                        		+ "    age: int & >=18 & <=60 @message(\"Age must be between 18 and 60\")\r\n"
-    		                        		+ "  email: string & =~\"^.+@.+\\\\..+$\"   @message(\"Invalid email format\")\r\n"
-    		                        		+ "    dob: string & =~\"^\\\\d{4}-\\\\d{2}-\\\\d{2}$\" @message(\"DOB must be in YYYY-MM-DD format\")\r\n"
-    		                        		+ "\r\n"
-    		                        		+ "    isActive?: bool\r\n"
-    		                        		+ "}";
-    		                        
-    		                        String json5 = "{\r\n"
-    		                        		+ "  \"Request\": {\r\n"
-    		                        		+ "    \"name\": \"\",\r\n"
-    		                        		+ "    \"age\": 19,\r\n"
-    		                        		+ "    \"email\": \"ramgmail.com\",\r\n"
-    		                        		+ "    \"dob\": \"200-06-20\",\r\n"
-    		                        		+ "    \"isActive\": true\r\n"
-    		                        		+ "  }\r\n"
-    		                        		+ "}\r\n"
-    		                        		+ "";
-    		                        
-    		                        
-    		                        String schema6 = "Request: {\r\n"
-    		                        		+ "  user: {\r\n"
-    		                        		+ "    name: string @tag(message=\"Name is required\")\r\n"
-    		                        		+ "    age: int & >=18 & <=60 @tag(message=\"Age must be between 18 and 60\")\r\n"
-    		                        		+ "  }\r\n"
-    		                        		+ "  contact: {\r\n"
-    		                        		+ "    email: string & =~\"^.+@.+\\\\..+$\" @tag(message=\"Invalid email format\")\r\n"
-    		                        		+ "    phone: string & =~\"^[0-9]{10}$\" @tag(message=\"Phone must be 10 digits\")\r\n"
-    		                        		+ "  }\r\n"
-    		                        		+ "}\r\n"
-    		                        		+ "";
-    		                        
-    		                        String json6 = "{\r\n"
-    		                        		+ "  \"Request\": {\r\n"
-    		                        		+ "    \"user\": {\r\n"
-    		                        		+ "      \"name\": \"\",\r\n"
-    		                        		+ "      \"age\": 55\r\n"
-    		                        		+ "    },\r\n"
-    		                        		+ "    \"contact\": {\r\n"
-    		                        		+ "      \"email\": \"invalidemail\",\r\n"
-    		                        		+ "      \"phone\": \"1234567890\"\r\n"
-    		                        		+ "    }\r\n"
-    		                        		+ "  }\r\n"
-    		                        		+ "}";
-    		                        
 
-    		                		
-        String result = CueValidatorLibrary.INSTANCE.ValidateJSONWithCue(schema6,json6);
-       // String result = CueValidatorLibrary.INSTANCE.ValidateJSON(schema5,json5);
-        
-        System.out.println(result);
-     // Convert JSON array string to List<String>
-        Map<String, String> errorMap = null;
+
+
+		//-------------------------
+
+
+
+		String schema4 = "Request: {\r\n"
+				+ "  name:  string & !=\"\" @message(\"Name must not be empty\") @success(\"Name is valid\")\r\n"
+				+ "  email: string & =~\"^.+@.+\\\\..+$\" @message(\"Invalid email format\") @success(\"Email is valid\")\r\n"
+				+ "  age:   int & >=18 & <=60 @message(\"Age must be between 18 and 60\") @success(\"Age is valid\")\r\n"
+				+ "}\r\n"
+				+ "";
+
+		String json4 = "{\r\n"
+				+ "  \"Request\": {\r\n"
+				+ "    \"name\": \"John Doe\",\r\n"
+				+ "     \"email\": \"john.doe@example.com\",\r\n"
+				+ "	 \"age\": 3\r\n"
+				+ "  }\r\n"
+				+ "}\r\n"
+				+ "";
+
+
+
+		String schema5 = "Request: {\r\n"
+				+ "    name: string & !=\"\" @message(\"Name must not be empty\")\r\n"
+				+ "\r\n"
+				+ "    age: int & >=18 & <=60 @message(\"Age must be between 18 and 60\")\r\n"
+				+ "  email: string & =~\"^.+@.+\\\\..+$\"   @message(\"Invalid email format\")\r\n"
+				+ "    dob: string & =~\"^\\\\d{4}-\\\\d{2}-\\\\d{2}$\" @message(\"DOB must be in YYYY-MM-DD format\")\r\n"
+				+ "\r\n"
+				+ "    isActive?: bool\r\n"
+				+ "}";
+
+		String json5 = "{\r\n"
+				+ "  \"Request\": {\r\n"
+				+ "    \"name\": \"\",\r\n"
+				+ "    \"age\": 19,\r\n"
+				+ "    \"email\": \"ramgmail.com\",\r\n"
+				+ "    \"dob\": \"200-06-20\",\r\n"
+				+ "    \"isActive\": true\r\n"
+				+ "  }\r\n"
+				+ "}\r\n"
+				+ "";
+
+
+		String schema6 = "Request: {\r\n"
+				+ "  user: {\r\n"
+				+ "    name: string @tag(message=\"Name is required\")\r\n"
+				+ "    age: int & >=18 & <=60 @tag(message=\"Age must be between 18 and 60\")\r\n"
+				+ "  }\r\n"
+				+ "  contact: {\r\n"
+				+ "    email: string & =~\"^.+@.+\\\\..+$\" @tag(message=\"Invalid email format\")\r\n"
+				+ "    phone: string & =~\"^[0-9]{10}$\" @tag(message=\"Phone must be 10 digits\")\r\n"
+				+ "  }\r\n"
+				+ "}\r\n"
+				+ "";
+
+		String json6 = "{\r\n"
+				+ "  \"Request\": {\r\n"
+				+ "    \"user\": {\r\n"
+				+ "      \"name\": \"\",\r\n"
+				+ "      \"age\": 55\r\n"
+				+ "    },\r\n"
+				+ "    \"contact\": {\r\n"
+				+ "      \"email\": \"invalidemail\",\r\n"
+				+ "      \"phone\": \"1234567890\"\r\n"
+				+ "    }\r\n"
+				+ "  }\r\n"
+				+ "}";
+
+		String schema7 ="Request: {\r\n"
+				+ "  devices: [...{\r\n"
+				+ "    id:    int    @message(\"ID must be a number\")\r\n"
+				+ "    brand: string @message(\"Brand is required\")\r\n"
+				+ "  }]\r\n"
+				+ "}";
+
+		String json7 ="{\r\n"
+				+ "  \"Request\": {\r\n"
+				+ "    \"devices\": [\r\n"
+				+ "      { \"id\": \"weed\", \"brand\": \"Nokia\" },\r\n"
+				+ "      { \"id\": \"xyz\", \"brand\": \"\" }\r\n"
+				+ "    ]\r\n"
+				+ "  }\r\n"
+				+ "}\r\n"
+				+ "";
+
+		String schema8 ="Request: {\r\n"
+				+ "  name: string @message(\"Name is required\")\r\n"
+				+ "  age:  int & >=18 & <=60 @message(\"Age must be between 18 and 60\")\r\n"
+				+ "  email: string & =~\"^.+@.+\\\\..+$\" @message(\"Invalid email format\")\r\n"
+				+ "\r\n"
+				+ "  address: {\r\n"
+				+ "    city:    string @message(\"City is required\")\r\n"
+				+ "    pincode: int    @message(\"Pincode must be a number\")\r\n"
+				+ "  }\r\n"
+				+ "\r\n"
+				+ "  devices: [...{\r\n"
+				+ "    id:    int    @message(\"Device ID must be a number\")\r\n"
+				+ "    brand: string @message(\"Device brand required\")\r\n"
+				+ "  }]\r\n"
+				+ "}\r\n"
+				+ "";
+		String json8 ="{\r\n"
+				+ "  \"Request\": {\r\n"
+				+ "    \"name\": \"\",\r\n"
+				+ "    \"age\": 17,\r\n"
+				+ "    \"email\": \"abc.com\",\r\n"
+				+ "    \"address\": {\r\n"
+				+ "      \"city\": \"\",\r\n"
+				+ "      \"pincode\": \"XYZ\"\r\n"
+				+ "    },\r\n"
+				+ "    \"devices\": [\r\n"
+				+ "      { \"id\": 101, \"brand\": \"\" },\r\n"
+				+ "      { \"id\": \"xyz\", \"brand\": \"\" }\r\n"
+				+ "    ]\r\n"
+				+ "  }\r\n"
+				+ "}\r\n"
+				+ "";
+
+
+		String result = CueValidatorLibrary.INSTANCE.ValidateJSONWithCue(schema1,json1);
+		// String result = CueValidatorLibrary.INSTANCE.ValidateJSON(schema5,json5);
+
+		System.out.println(result);
+		// Convert JSON array string to List<String>
+		Map<String, String> errorMap = null;
 		try {
 			errorMap = new ObjectMapper().readValue(result, new TypeReference<>() {});
 		} catch (JsonProcessingException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-        // Display each error
-        System.out.println("Map"+ errorMap);
-        return errorMap;
-    }
+		// Display each error
+		System.out.println("Map"+ errorMap);
+		return errorMap;
+	}
 }
