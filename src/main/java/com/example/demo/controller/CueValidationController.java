@@ -182,41 +182,45 @@ public class CueValidationController {
 				+ "}\r\n"
 				+ "";
 
-		String schema8 ="Request: {\r\n"
-				+ "  name: string @message(\"Name is required\")\r\n"
-				+ "  age:  int & >=18 & <=60 @message(\"Age must be between 18 and 60\")\r\n"
-				+ "  email: string & =~\"^.+@.+\\\\..+$\" @message(\"Invalid email format\")\r\n"
-				+ "\r\n"
-				+ "  address: {\r\n"
-				+ "    city:    string @message(\"City is required\")\r\n"
-				+ "    pincode: int    @message(\"Pincode must be a number\")\r\n"
-				+ "  }\r\n"
-				+ "\r\n"
-				+ "  devices: [...{\r\n"
-				+ "    id:    int    @message(\"Device ID must be a number\")\r\n"
-				+ "    brand: string @message(\"Device brand required\")\r\n"
-				+ "  }]\r\n"
-				+ "}\r\n"
-				+ "";
-		String json8 ="{\r\n"
-				+ "  \"Request\": {\r\n"
-				+ "    \"name\": \"\",\r\n"
-				+ "    \"age\": 17,\r\n"
-				+ "    \"email\": \"abc.com\",\r\n"
-				+ "    \"address\": {\r\n"
-				+ "      \"city\": \"\",\r\n"
-				+ "      \"pincode\": \"XYZ\"\r\n"
-				+ "    },\r\n"
-				+ "    \"devices\": [\r\n"
-				+ "      { \"id\": 101, \"brand\": \"\" },\r\n"
-				+ "      { \"id\": \"xyz\", \"brand\": \"\" }\r\n"
-				+ "    ]\r\n"
-				+ "  }\r\n"
-				+ "}\r\n"
-				+ "";
+		String schema8 = """
+				Request: {
+				  name: string @message("Name is required")
+				  age:  int & >=18 & <=60 @message("Age must be between 18 and 60")
+				  email: string & =~"^.+@.+\\\\..+$" @message("Invalid email format")
+				  amount: number & >=0.01 & <=1000.00 @tag(message="Invalid amount", decimal="2")
+				
+				  address: {
+				    city:    string @message("City is required")
+				    pincode: int    @message("Pincode must be a number")
+				  }}
+				""";
+		String json8 = """
+				{
+				  "Request": {
+				    "name": "",
+				    "age": 17,
+				    "email": "abc.com",
+				    "amount":12456555777.45,
+				    "address": {
+				      "city": "",
+				      "pincode": "XYZ"
+				    },
+				    "devices": [
+				      { "id": 101, "brand": "" },
+				      { "id": "xyz", "brand": "" }
+				    ]
+				  }
+				}
+				""";
 
 
-		String result = CueValidatorLibrary.INSTANCE.ValidateJSONWithCue(schema1,json1);
+		System.out.println("json: "+request.getJson());
+		System.out.println("Schema: "+request.getSchema());
+
+		// The following block is redundant as it prints the same thing regardless of the condition.
+		// System.out.println("json: "+request.getJson());
+
+		String result = CueValidatorLibrary.INSTANCE.ValidateJSONWithCue(request.getSchema(),request.getJson());
 		// String result = CueValidatorLibrary.INSTANCE.ValidateJSON(schema5,json5);
 
 		System.out.println(result);
