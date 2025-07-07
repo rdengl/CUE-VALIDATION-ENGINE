@@ -1,0 +1,88 @@
+
+Request: {
+
+  age: int & >= 18 & <= 60 @tag(message="Age must be between 18 and 60")
+  name: string & !="" @tag(message="Name must not be empty")
+  salary: int @tag(message="Salary must be an integer and not null")
+  parent_status_ORoperator: "active" | "inactive" | "pending" @tag(message="Constant validation for Status must be 'active' | 'inactive' 'pending'")
+  dobFormat1: string & =~"^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$" @tag(message="Date must be in yyyy-MM-dd HH:mm:ss format", date="yyyy-MM-dd HH:mm:ss")
+  dobFormat2: string & =~"^\\d{4}-\\d{2}-\\d{2}$" @tag(message="Date must be in yyyy-MM-dd format", date="yyyy-MM-dd")
+  dobFormat3: string & =~"^\\d{2}-\\d{2}-\\d{4}$" @tag(message="Date must be in MM-dd-yyyy format", date="MM-dd-yyyy")
+  parentLevelDecimal: number & >= 0.00 & <= 9999999999.99 @tag(message="Invalid amount", decimal="2")
+
+  childObject: [...{
+    id: string & !="" @tag(message="Child ID must not be empty")
+    address: string & !="" @tag(message="Child address must not be empty")
+    status: "active" @tag(message="Status must be 'active'")
+    status_or_operator: "active" | "inactive" | "pending" @tag(message="Constant validation for Status must be 'active' | 'inactive' 'pending'")
+    childLevelDecimal: number & >= 0.00 & <= 9999999999.99 @tag(message="Invalid amount", decimal="2")
+  }]
+
+  attributesMap: {
+    key: string & !="" @tag(message="Key must not be empty")
+    mapInnerObjeect: {
+      tempId: number @tag(message="tempId must be a number")
+      templateName: string & !="" @tag(message="templateName must not be empty")
+    }
+  }
+  exactIntMatch: int & 10 @tag(message="Integer Value must be exactly 10")
+  exactStringMatch: string & "samsung" @tag(message="String Value must be exactly samsung")
+  isActive: bool @tag(message="isActive must be true or false")
+  statusWithNotEqualOp : string & != "inactive" @tag(message="Status cannot be 'inactive'")
+}
+
+
+{
+	"Request": {
+
+		"age": 30,
+		"name": "Alice",
+		"salary": 50000,
+		"parent_status_ORoperator": "pending",
+		"dobFormat1": "2006-01-02 15:04:05",
+		"dobFormat2": "1990-05-12",
+		"dobFormat3": "01-02-2006",
+		"parentLevelDecimal": 77.89,
+		"childObject": [
+			{
+				"id": "001",
+				"address": "123 Street",
+				"status": "active",
+				"status_or_operator": "pending",
+				"childLevelDecimal": 76.9
+			}
+		],
+		"attributesMap": {
+			"key": "template 1",
+			"mapInnerObjeect": {
+				"tempId": 1,
+				"templateName": ""
+			}
+		},
+		"exactIntMatch":10,
+		"exactStringMatch":"samsung",
+		"isActive": true,
+		"statusWithNotEqualOp":"inactive"
+	}
+}
+
+
+
+
+	1. age: validating range values for numbers ->[Operator]   int & >= 18 & <= 60 -> [Error_Message] @tag(message="Age must be between 18 and 60")
+	2. name: validating string value should not be empty or null string -> [Operator]   & !="" -> [Error_Message] @tag(message="Name must not be empty")
+	3. salary: validating salary must be numeric value -> [just add type it will allow only numeric value] int -> [Error_Message] @tag(message="Salary must be an integer ")
+	4. parent_status_ORoperator :  validating for constant enum/value -> [add constant directly with double quote ] "active" -> [Error_Message]  @tag(message="Constant validation for Status must be 'active'")
+	5. parent_status_ORoperator :  validating for constant enum/value for multiple Value-> [add constant directly with double quote with | pipe(or) oprator ] "active" | "inactive" -> [Error_Message]  @tag(message="Constant validation for Status must be 'active' | 'inactive' ")
+	6. dobFormat1: validating data patter matching or not -> [we can pass any regX patterns to validate date] string & =~"^\\\\d{2}-\\\\d{2}-\\\\d{4}$" -> [Error_Message]  @tag(message="Date must be in MM-dd-yyyy format", date="MM-dd-yyyy")
+	7.parentLevelDecimal : validating decimal value by passing ragnge and decimal count -> [we can give range here] number & >=0.00 & <=9999999999.99 -> [Error_Message] @tag(message="Invalid amount", decimal="2")
+	8. childObject : validating child object with all the possible validation ->[we need to pass same validaton lik 1 to 7 ] [...{}]
+	9. attributesMap: validating map of object all the possible validation ->[we need to pass same validaton lik 1 to 7 ] [...{}] -> {key,value}
+	10. statusWithNotEqualOp: validating string value not equals string constant -> [add constant directly with double quote with ] string & != "inactive"  ->  [Error_Message]@tag(message="Status cannot be 'inactive'")
+	11. isActive: validating boolean -> bool -> [Error_Message] @tag(message="isActive must be true or false")
+	12. exactStringMatch: validating string value with equals string constant ->[Operator]  string & "samsung" ->  [Error_Message] @tag(message="String Value must be exactly samsung")
+	13. exactMatch : validating int value with equals numeric constant ->[Operator] int & 10 ->  [Error_Message] @tag(message="Integer Value must be exactly 10")
+	14. All kind fo Regex format validation handled which support cue lang
+
+
+
