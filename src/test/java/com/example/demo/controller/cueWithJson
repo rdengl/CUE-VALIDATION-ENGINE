@@ -29,6 +29,7 @@ Request: {
   exactStringMatch: string & "samsung" @tag(message="String Value must be exactly samsung")
   isActive: bool @tag(message="isActive must be true or false")
   statusWithNotEqualOp : string & != "inactive" @tag(message="Status cannot be 'inactive'")
+  contains_check: string & =~".*Ram.*" @tag(message="name must contain 'Ram'")
 }
 
 
@@ -62,7 +63,8 @@ Request: {
 		"exactIntMatch":10,
 		"exactStringMatch":"samsung",
 		"isActive": true,
-		"statusWithNotEqualOp":"inactive"
+		"statusWithNotEqualOp":"inactive",
+		"contains_check":"Ram"
 	}
 }
 
