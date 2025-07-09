@@ -84,23 +84,11 @@ func validateRecursive(path string, schema cue.Value, data cue.Value, resultMap 
 		}
 
 		if schemaField.IncompleteKind() == cue.ListKind {
-			listIter, err := dataField.List()
-			if err != nil {
-				(*resultMap)[fullPath] = "Invalid array"
-				continue
-			}
-			schemaElem, _ := schemaField.Elem()
-			index := 0
-			for listIter.Next() {
-				item := listIter.Value()
-				itemPath := fmt.Sprintf("%s[%d]", fullPath, index)
-
-				if schemaElem.IncompleteKind() == cue.StructKind {
-					validateRecursive(itemPath, schemaElem, item, resultMap)
-				} else {
-					validateScalar(itemPath, schemaElem, item, resultMap)
-				}
-				index++
+			vals := extractListValues(dataField)
+			if err := applyListValidations(schemaField, vals); err != "" {
+				(*resultMap)[fullPath] = err
+			} else {
+				(*resultMap)[fullPath] = "valid"
 			}
 			continue
 		}
@@ -113,7 +101,6 @@ func validateScalar(path string, schemaField, dataField cue.Value, resultMap *ma
 	decimalPlaces := getDecimalPlaces(schemaField)
 	dateLayout := getDateLayout(schemaField)
 
-	// Step 1: CUE validation
 	result := schemaField.Unify(dataField)
 	if err := result.Validate(); err != nil {
 		msg := getCustomMessage(schemaField)
@@ -121,7 +108,6 @@ func validateScalar(path string, schemaField, dataField cue.Value, resultMap *ma
 		return
 	}
 
-	// Step 2: Decimal check (avoid float64 error)
 	if decimalPlaces >= 0 {
 		raw := formatNodeToString(dataField)
 		if strings.Contains(raw, `"`) {
@@ -134,7 +120,6 @@ func validateScalar(path string, schemaField, dataField cue.Value, resultMap *ma
 		}
 	}
 
-	// Step 3: Date format
 	if dateLayout != "" {
 		strVal, err := dataField.String()
 		if err != nil || !isValidDate(strVal, dateLayout) {
@@ -145,6 +130,76 @@ func validateScalar(path string, schemaField, dataField cue.Value, resultMap *ma
 	}
 
 	(*resultMap)[path] = "valid"
+}
+
+func applyListValidations(field cue.Value, input []string) string {
+	msg := getCustomMessage(field)
+
+	if len(input) == 0 {
+		return "Request having empty Array or List"
+	}
+	reqAll := getTagList(field, "required_all")
+	if len(reqAll) > 0 && !containsAll(input, reqAll) {
+		return fmt.Sprintf("%s: must contain all values [%s]", msg, strings.Join(reqAll, ", "))
+	}
+
+	containsAnyVals := getTagList(field, "contains_any")
+	if len(containsAnyVals) > 0 && !containsAny(input, containsAnyVals) {
+		return fmt.Sprintf("%s: must contain at least one of [%s]", msg, strings.Join(containsAnyVals, ", "))
+	}
+
+	notContain := getTagList(field, "not_contains")
+	if len(notContain) > 0 && containsAny(input, notContain) {
+		return fmt.Sprintf("%s: must not contain any of [%s]", msg, strings.Join(notContain, ", "))
+	}
+
+	return ""
+}
+
+func extractListValues(v cue.Value) []string {
+	var list []string
+	iter, _ := v.List()
+	for iter.Next() {
+		val := iter.Value()
+		str := formatNodeToString(val)
+		list = append(list, strings.Trim(str, `"`))
+	}
+	return list
+}
+
+func getTagList(v cue.Value, tagName string) []string {
+	if attr := v.Attribute("tag"); attr.Err() == nil {
+		if val, found, err := attr.Lookup(0, tagName); err == nil && found {
+			return strings.Split(strings.Trim(val, `"`), ",")
+		}
+	}
+	return nil
+}
+
+func containsAll(input, required []string) bool {
+	set := make(map[string]bool)
+	for _, val := range input {
+		set[val] = true
+	}
+	for _, r := range required {
+		if !set[r] {
+			return false
+		}
+	}
+	return true
+}
+
+func containsAny(input, targets []string) bool {
+	set := make(map[string]bool)
+	for _, val := range input {
+		set[val] = true
+	}
+	for _, t := range targets {
+		if set[t] {
+			return true
+		}
+	}
+	return false
 }
 
 func getDecimalPlaces(v cue.Value) int {
@@ -167,6 +222,12 @@ func getDateLayout(v cue.Value) string {
 	return ""
 }
 
+func isValidDate(value string, layout string) bool {
+	layout = convertDateFormat(layout)
+	_, err := time.Parse(layout, value)
+	return err == nil
+}
+
 func hasExactDecimalPlaces(str string, places int) bool {
 	dot := strings.Index(str, ".")
 	if dot == -1 {
@@ -174,12 +235,6 @@ func hasExactDecimalPlaces(str string, places int) bool {
 	}
 	decimals := str[dot+1:]
 	return len(decimals) == places
-}
-
-func isValidDate(value string, layout string) bool {
-	layout = convertDateFormat(layout)
-	_, err := time.Parse(layout, value)
-	return err == nil
 }
 
 func convertDateFormat(layout string) string {
