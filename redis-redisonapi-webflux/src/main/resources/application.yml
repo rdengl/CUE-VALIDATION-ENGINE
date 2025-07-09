@@ -1,0 +1,12 @@
+spring:
+  data:
+    redis:
+      host: localhost1
+      port: 6379
+
+redisson:
+  config: |
+    singleServerConfig:
+      address: "redis://localhost:6379"
+    threads: 4
+    nettyThreads: 4
