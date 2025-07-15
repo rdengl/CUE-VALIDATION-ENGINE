@@ -1,0 +1,26 @@
+#spring.application.name=Ehcache
+
+
+spring:
+  cache:
+    type: none  # We override CacheManager manually
+
+
+
+
+
+ehcache:
+  disk-enabled: false      # set true to enable disk persistence
+  disk-path: ehcache-data  # disk storage directory (used only if enabled)
+  caches:
+    productsCache:
+      ttl: 600        # seconds
+      heap: 500       # max entries
+      disk-size: 100  # MB
+      disk-persistent: false
+
+logging:
+  level:
+    org.springframework.cache: DEBUG
+    org.ehcache: DEBUG
+
