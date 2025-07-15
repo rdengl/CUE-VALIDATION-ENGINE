@@ -1,0 +1,46 @@
+🔍 Parameter-by-Parameter Explanation
+Parameter	Type	Purpose / Usage
+cacheName	String	Unique name for the cache. Used as a key in the registry map and passed to the cacheManager.
+keyType	Class<K>	Specifies the Java type of the cache key (e.g. String.class, Long.class). Ensures type safety.
+valueType	Class<V>	Specifies the Java type of the cache value (e.g. User.class, Product.class).
+ttlSeconds	long	Time-To-Live: how long an entry should stay in cache before it expires. Measured in seconds.
+heapEntries	long	Max number of entries in the heap (JVM memory). Eviction (usually LRU) starts after this limit.
+offheapMB	long	Max size (in MB) for storing entries in off-heap (native) memory, which avoids JVM GC pressure.
+diskMB	long	Max size (in MB) to store entries on disk. Used only if properties.isDiskEnabled() is true.
+
+
+
+
+Cache<String, User> userCache = dynamicCacheService.getOrCreateCache(
+    "userCache",
+    String.class,
+    User.class,
+    600,     // TTL 600 seconds
+    1000,    // Heap entries
+    50,      // Offheap MB
+    200      // Disk MB (used only if disk is enabled)
+);
+
+
+
+
+| Concept      | Value Source  | Use In Code                         |
+| ------------ | ------------- | ----------------------------------- |
+| Cache Name   | `cacheName`   | `registry`, `cacheManager`          |
+| Key Type     | `keyType`     | `CacheConfigurationBuilder.new...`  |
+| Value Type   | `valueType`   | Same                                |
+| TTL          | `ttlSeconds`  | `ExpiryPolicyBuilder.timeToLive...` |
+| Heap Tier    | `heapEntries` | `.heap(..., EntryUnit.ENTRIES)`     |
+| Offheap Tier | `offheapMB`   | `.offheap(..., MemoryUnit.MB)`      |
+| Disk Tier    | `diskMB`      | `.disk(..., MemoryUnit.MB, true)`   |
+
+
+
+| Parameter                | Type         | Used In                                              | Purpose                                                                                       |
+| ------------------------ | ------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `heapEntries`            | `long`       | `.heap(heapEntries, EntryUnit.ENTRIES)`              | Maximum number of entries to store in the **Java heap** (in-JVM memory). Fastest access.      |
+| `EntryUnit.ENTRIES`      | `EntryUnit`  | Same as above                                        | Tells Ehcache that `heapEntries` is a **count of objects**, not memory size.                  |
+| `offheapMB`              | `long`       | `.offheap(offheapMB, MemoryUnit.MB)`                 | Amount of **off-heap memory** (outside JVM) to allocate in **megabytes**. Avoids GC pressure. |
+| `MemoryUnit.MB`          | `MemoryUnit` | Used to specify the **unit of size** (MB, GB, etc.). |                                                                                               |
+| `diskMB`                 | `long`       | `.disk(diskMB, MemoryUnit.MB, true)`                 | Amount of **disk space** in MB to allocate for overflow or persistence.                       |
+| `true` (in `.disk(...)`) | `boolean`    | Persistent flag                                      | `true` = persist data to disk **across JVM restarts**. `false` = temporary disk cache.        |
