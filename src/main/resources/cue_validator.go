@@ -6,165 +6,213 @@ package main
 import "C"
 
 import (
+	"C"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
-	"time"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
-	"cuelang.org/go/cue/format"
 )
 
 //export ValidateJSONWithCue
-func ValidateJSONWithCue(schemaCStr, jsonCStr *C.char) *C.char {
-	schemaStr := C.GoString(schemaCStr)
-	jsonStr := C.GoString(jsonCStr)
+func ValidateJSONWithCue(schemaStr *C.char, jsonStr *C.char) *C.char {
+	schema := C.GoString(schemaStr)
+	jsonData := C.GoString(jsonStr)
 
 	ctx := cuecontext.New()
+
+	// Compile schema
+	cueSchemaVal := ctx.CompileString(schema)
+	if cueSchemaVal.Err() != nil {
+		return C.CString(fmt.Sprintf(`{"error": "Invalid schema: %s"}`, cueSchemaVal.Err()))
+	}
+
+	// Compile JSON data
+	cueJSONVal := ctx.CompileString(jsonData)
+	if cueJSONVal.Err() != nil {
+		return C.CString(fmt.Sprintf(`{"error": "Invalid JSON: %s"}`, cueJSONVal.Err()))
+	}
+
+	schemaVal := cueSchemaVal.LookupPath(cue.ParsePath("Request"))
+	jsonVal := cueJSONVal.LookupPath(cue.ParsePath("Request"))
+
 	resultMap := make(map[string]string)
+	validateRecursive("Request", schemaVal, jsonVal, &resultMap)
 
-	schemaVal := ctx.CompileString(schemaStr)
-	if err := schemaVal.Err(); err != nil {
-		return mapToCString(map[string]string{"error": "Invalid CUE schema: " + err.Error()})
-	}
-
-	jsonVal := ctx.CompileString(jsonStr)
-	if err := jsonVal.Err(); err != nil {
-		return mapToCString(map[string]string{"error": "Invalid JSON input: " + err.Error()})
-	}
-
-	topKey, err := getTopLevelKey(jsonStr)
+	resultJSON, err := json.Marshal(resultMap)
 	if err != nil {
-		return mapToCString(map[string]string{"error": "Invalid JSON input: " + err.Error()})
-	}
-	schemaRoot := schemaVal.LookupPath(cue.ParsePath(topKey))
-	jsonRoot := jsonVal.LookupPath(cue.ParsePath(topKey))
-
-	if !schemaRoot.Exists() {
-		return mapToCString(map[string]string{"error": "Schema must define a 'Request' root object"})
+		return C.CString(`{"error": "Failed to marshal result"}`)
 	}
 
-	validateRecursive("", schemaRoot, jsonRoot, &resultMap)
-
-	return mapToCString(resultMap)
+	return C.CString(string(resultJSON))
 }
 
-func getTopLevelKey(jsonStr string) (string, error) {
-	var top map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &top); err != nil {
-		return "", err
-	}
-	for k := range top {
-		return k, nil
-	}
-	return "", fmt.Errorf("empty JSON object")
-}
+func validateRecursive(path string, schemaField, dataField cue.Value, resultMap *map[string]string) {
+	schemaKind := schemaField.IncompleteKind()
+	dataKind := dataField.IncompleteKind()
+	fullPath := path
 
-func validateRecursive(path string, schema cue.Value, data cue.Value, resultMap *map[string]string) {
-	iter, _ := schema.Fields()
-	for iter.Next() {
-		fieldName := iter.Label()
-		fullPath := fieldName
-		if path != "" {
-			fullPath = path + "." + fieldName
+	if schemaKind == cue.ListKind && dataKind == cue.ListKind {
+		vals := extractListValues(dataField)
+		listLevelMsg := applyListValidations(schemaField, vals)
+
+		if listLevelMsg != "" {
+			(*resultMap)[fullPath] = listLevelMsg
+		} else {
+			(*resultMap)[fullPath] = "valid"
 		}
 
-		schemaField := iter.Value()
-		dataField := data.LookupPath(cue.ParsePath(fieldName))
-
-		if !dataField.Exists() {
-			continue
+		// Skip individual item validation if list-level validations are present
+		if hasListLevelTags(schemaField) {
+			return
 		}
 
-		if schemaField.IncompleteKind() == cue.StructKind {
-			validateRecursive(fullPath, schemaField, dataField, resultMap)
-			continue
-		}
+		listIter, _ := dataField.List()
+		itemSchema := schemaField.LookupPath(cue.MakePath(cue.AnyIndex))
 
-		if schemaField.IncompleteKind() == cue.ListKind {
-			vals := extractListValues(dataField)
-			if err := applyListValidations(schemaField, vals); err != "" {
-				(*resultMap)[fullPath] = err
+		i := 0
+		for listIter.Next() {
+			item := listIter.Value()
+			itemPath := fmt.Sprintf("%s[%d]", fullPath, i)
+
+			if itemSchema.Exists() {
+				if itemSchema.IncompleteKind() == cue.StructKind {
+					validateRecursive(itemPath, itemSchema, item, resultMap)
+				} else {
+					validateScalar(itemPath, itemSchema, item, resultMap)
+				}
 			} else {
-				(*resultMap)[fullPath] = "valid"
+				(*resultMap)[itemPath] = "Schema for list item not found"
 			}
-			continue
+			i++
 		}
-
-		validateScalar(fullPath, schemaField, dataField, resultMap)
-	}
-}
-
-func validateScalar(path string, schemaField, dataField cue.Value, resultMap *map[string]string) {
-	decimalPlaces := getDecimalPlaces(schemaField)
-	dateLayout := getDateLayout(schemaField)
-
-	result := schemaField.Unify(dataField)
-	if err := result.Validate(); err != nil {
-		msg := getCustomMessage(schemaField)
-		(*resultMap)[path] = msg
 		return
 	}
 
-	if decimalPlaces >= 0 {
-		raw := formatNodeToString(dataField)
-		if strings.Contains(raw, `"`) {
-			raw = strings.Trim(raw, `"`)
+	if schemaKind == cue.StructKind && dataKind == cue.StructKind {
+		fields, _ := schemaField.Fields()
+		for fields.Next() {
+			field := fields.Selector().String()
+			validateRecursive(fmt.Sprintf("%s.%s", path, field),
+				schemaField.LookupPath(cue.ParsePath(field)),
+				dataField.LookupPath(cue.ParsePath(field)),
+				resultMap,
+			)
 		}
-		if !hasExactDecimalPlaces(raw, decimalPlaces) {
-			msg := getCustomMessage(schemaField)
-			(*resultMap)[path] = fmt.Sprintf("%s must have exactly %d decimal places", msg, decimalPlaces)
-			return
-		}
+		return
 	}
 
-	if dateLayout != "" {
-		strVal, err := dataField.String()
-		if err != nil || !isValidDate(strVal, dateLayout) {
-			msg := getCustomMessage(schemaField)
-			(*resultMap)[path] = fmt.Sprintf("%s expected format %s", msg, dateLayout)
-			return
-		}
-	}
-
-	(*resultMap)[path] = "valid"
+	validateScalar(fullPath, schemaField, dataField, resultMap)
 }
 
-func applyListValidations(field cue.Value, input []string) string {
-	msg := getCustomMessage(field)
-
-	if len(input) == 0 {
-		return "Request having empty Array or List"
+func validateScalar(field string, schemaField, dataField cue.Value, resultMap *map[string]string) {
+	if err := schemaField.Unify(dataField).Validate(); err != nil {
+		msg := getCustomMessage(schemaField)
+		if msg == "" {
+			msg = err.Error()
+		}
+		(*resultMap)[field] = msg
+	} else {
+		(*resultMap)[field] = "valid"
 	}
-	reqAll := getTagList(field, "required_all")
-	if len(reqAll) > 0 && !containsAll(input, reqAll) {
-		return fmt.Sprintf("%s: must contain all values [%s]", msg, strings.Join(reqAll, ", "))
+}
+
+func getCustomMessage(v cue.Value) string {
+	if attr := v.Attribute("tag"); attr.Err() == nil {
+		if msg, found, _ := attr.Lookup(0, "message"); found {
+			return strings.Trim(msg, `"`)
+		}
+	}
+	return ""
+}
+
+func extractListValues(data cue.Value) []string {
+	list := []string{}
+	iter, _ := data.List()
+	for iter.Next() {
+		val := iter.Value()
+		switch val.IncompleteKind() {
+		case cue.StringKind:
+			strVal, _ := val.String()
+			list = append(list, strVal)
+		case cue.IntKind:
+			intVal, _ := val.Int64()
+			list = append(list, fmt.Sprintf("%d", intVal))
+		case cue.NumberKind:
+			numVal, _ := val.Float64()
+			list = append(list, fmt.Sprintf("%f", numVal))
+		}
+	}
+	return list
+}
+
+func applyListValidations(v cue.Value, values []string) string {
+	requiredAll := getTagList(v, "required_all")
+	containsAny := getTagList(v, "contains_any")
+	notContains := getTagList(v, "not_contains")
+	msg := getCustomMessage(v)
+	if msg == "" {
+		msg = "List validation failed"
 	}
 
-	containsAnyVals := getTagList(field, "contains_any")
-	if len(containsAnyVals) > 0 && !containsAny(input, containsAnyVals) {
-		return fmt.Sprintf("%s: must contain at least one of [%s]", msg, strings.Join(containsAnyVals, ", "))
+	if requiredAll != nil {
+		missing := missingValues(values, requiredAll)
+		if len(missing) > 0 {
+			return fmt.Sprintf("%s Values : [%s]", msg, strings.Join(missing, ", "))
+		}
 	}
 
-	notContain := getTagList(field, "not_contains")
-	if len(notContain) > 0 && containsAny(input, notContain) {
-		return fmt.Sprintf("%s: must not contain any of [%s]", msg, strings.Join(notContain, ", "))
+	if containsAny != nil && !containsAnyOne(values, containsAny) {
+		return fmt.Sprintf("%s - Values : [%s]", msg, strings.Join(containsAny, ", "))
+	}
+
+	if notContains != nil {
+		forbidden := intersect(values, notContains)
+		if len(forbidden) > 0 {
+			return fmt.Sprintf("%s - Values: %s", msg, strings.Join(forbidden, ", "))
+		}
 	}
 
 	return ""
 }
 
-func extractListValues(v cue.Value) []string {
-	var list []string
-	iter, _ := v.List()
-	for iter.Next() {
-		val := iter.Value()
-		str := formatNodeToString(val)
-		list = append(list, strings.Trim(str, `"`))
+func missingValues(actual, required []string) []string {
+	missing := []string{}
+	valueSet := make(map[string]bool)
+	for _, val := range actual {
+		valueSet[val] = true
 	}
-	return list
+	for _, req := range required {
+		if !valueSet[req] {
+			missing = append(missing, req)
+		}
+	}
+	return missing
+}
+
+func hasListLevelTags(v cue.Value) bool {
+	if attr := v.Attribute("tag"); attr.Err() == nil {
+		_, hasRequiredAll, _ := attr.Lookup(0, "required_all")
+		_, hasContainsAny, _ := attr.Lookup(0, "contains_any")
+		_, hasNotContains, _ := attr.Lookup(0, "not_contains")
+		return hasRequiredAll || hasContainsAny || hasNotContains
+	}
+	return false
+}
+
+func intersect(list1, list2 []string) []string {
+	set := make(map[string]bool)
+	for _, v := range list1 {
+		set[v] = true
+	}
+	intersection := []string{}
+	for _, v := range list2 {
+		if set[v] {
+			intersection = append(intersection, v)
+		}
+	}
+	return intersection
 }
 
 func getTagList(v cue.Value, tagName string) []string {
@@ -176,109 +224,30 @@ func getTagList(v cue.Value, tagName string) []string {
 	return nil
 }
 
-func containsAll(input, required []string) bool {
-	set := make(map[string]bool)
-	for _, val := range input {
-		set[val] = true
+func containsAll(haystack, needles []string) bool {
+	set := make(map[string]struct{})
+	for _, v := range haystack {
+		set[v] = struct{}{}
 	}
-	for _, r := range required {
-		if !set[r] {
+	for _, n := range needles {
+		if _, ok := set[n]; !ok {
 			return false
 		}
 	}
 	return true
 }
 
-func containsAny(input, targets []string) bool {
-	set := make(map[string]bool)
-	for _, val := range input {
-		set[val] = true
+func containsAnyOne(haystack, needles []string) bool {
+	set := make(map[string]struct{})
+	for _, v := range haystack {
+		set[v] = struct{}{}
 	}
-	for _, t := range targets {
-		if set[t] {
+	for _, n := range needles {
+		if _, ok := set[n]; ok {
 			return true
 		}
 	}
 	return false
-}
-
-func getDecimalPlaces(v cue.Value) int {
-	if attr := v.Attribute("tag"); attr.Err() == nil {
-		if val, found, err := attr.Lookup(0, "decimal"); err == nil && found {
-			if d, err := strconv.Atoi(val); err == nil {
-				return d
-			}
-		}
-	}
-	return -1
-}
-
-func getDateLayout(v cue.Value) string {
-	if attr := v.Attribute("tag"); attr.Err() == nil {
-		if val, found, err := attr.Lookup(0, "date"); err == nil && found {
-			return convertDateFormat(val)
-		}
-	}
-	return ""
-}
-
-func isValidDate(value string, layout string) bool {
-	layout = convertDateFormat(layout)
-	_, err := time.Parse(layout, value)
-	return err == nil
-}
-
-func hasExactDecimalPlaces(str string, places int) bool {
-	dot := strings.Index(str, ".")
-	if dot == -1 {
-		return places == 0
-	}
-	decimals := str[dot+1:]
-	return len(decimals) == places
-}
-
-func convertDateFormat(layout string) string {
-	replacer := strings.NewReplacer(
-		"yyyy", "2006",
-		"MM", "01",
-		"dd", "02",
-		"HH", "15",
-		"mm", "04",
-		"ss", "05",
-	)
-	return replacer.Replace(layout)
-}
-
-func getCustomMessage(v cue.Value) string {
-	if attr := v.Attribute("tag"); attr.Err() == nil {
-		if val, found, err := attr.Lookup(0, "message"); err == nil && found {
-			return strings.Trim(val, `"`)
-		}
-	}
-	if attr := v.Attribute("message"); attr.Err() == nil {
-		if val, err := attr.String(0); err == nil {
-			return strings.Trim(val, `"`)
-		}
-	}
-	return ""
-}
-
-func formatNodeToString(v cue.Value) string {
-	syn := v.Syntax(
-		cue.Final(),
-		cue.Definitions(true),
-		cue.Concrete(true),
-	)
-	b, err := format.Node(syn)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(b))
-}
-
-func mapToCString(m map[string]string) *C.char {
-	jsonBytes, _ := json.Marshal(m)
-	return C.CString(string(jsonBytes))
 }
 
 func main() {}
