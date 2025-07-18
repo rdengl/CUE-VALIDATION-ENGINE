@@ -6,13 +6,14 @@ package main
 import "C"
 
 import (
-	"C"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
+	"cuelang.org/go/cue/format"
 )
 
 //export ValidateJSONWithCue
@@ -63,7 +64,7 @@ func validateRecursive(path string, schemaField, dataField cue.Value, resultMap 
 			(*resultMap)[fullPath] = "valid"
 		}
 
-		// Skip individual item validation if list-level validations are present
+		// Skip individual item validation if list-level tags present
 		if hasListLevelTags(schemaField) {
 			return
 		}
@@ -113,9 +114,57 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 			msg = err.Error()
 		}
 		(*resultMap)[field] = msg
-	} else {
-		(*resultMap)[field] = "valid"
+		return
 	}
+
+	attr := schemaField.Attribute("tag")
+
+	if attr.Err() == nil {
+		// Exact decimal
+		if val, found, _ := attr.Lookup(0, "decimal"); found {
+			expected, _ := strconv.Atoi(strings.Trim(val, `"`))
+			actual := getDecimalPlaces(dataField)
+			if actual != expected {
+				msg := getCustomMessage(schemaField)
+				if msg == "" {
+					msg = fmt.Sprintf("Must have exactly %d decimal places", expected)
+				}
+				(*resultMap)[field] = msg
+				return
+			}
+		}
+
+		// Max decimal
+		if val, found, _ := attr.Lookup(0, "decimal_max"); found {
+			max, _ := strconv.Atoi(strings.Trim(val, `"`))
+			actual := getDecimalPlaces(dataField)
+			if actual > max {
+				msg := getCustomMessage(schemaField)
+				if msg == "" {
+					msg = fmt.Sprintf("Must have at most %d decimal places", max)
+				}
+				(*resultMap)[field] = msg
+				return
+			}
+		}
+	}
+
+	(*resultMap)[field] = "valid"
+}
+
+func getDecimalPlaces(val cue.Value) int {
+	node := val.Syntax()
+	b, err := format.Node(node)
+	if err != nil {
+		return 0
+	}
+	raw := string(b)
+	raw = strings.Trim(raw, `"`)
+	parts := strings.Split(raw, ".")
+	if len(parts) != 2 {
+		return 0
+	}
+	return len(strings.TrimRight(parts[1], "0"))
 }
 
 func getCustomMessage(v cue.Value) string {
@@ -140,8 +189,13 @@ func extractListValues(data cue.Value) []string {
 			intVal, _ := val.Int64()
 			list = append(list, fmt.Sprintf("%d", intVal))
 		case cue.NumberKind:
-			numVal, _ := val.Float64()
-			list = append(list, fmt.Sprintf("%f", numVal))
+			node := val.Syntax()
+			b, err := format.Node(node)
+			if err != nil {
+				list = append(list, "invalid_number")
+			} else {
+				list = append(list, strings.Trim(string(b), `"`))
+			}
 		}
 	}
 	return list
@@ -193,10 +247,10 @@ func missingValues(actual, required []string) []string {
 
 func hasListLevelTags(v cue.Value) bool {
 	if attr := v.Attribute("tag"); attr.Err() == nil {
-		_, hasRequiredAll, _ := attr.Lookup(0, "required_all")
-		_, hasContainsAny, _ := attr.Lookup(0, "contains_any")
-		_, hasNotContains, _ := attr.Lookup(0, "not_contains")
-		return hasRequiredAll || hasContainsAny || hasNotContains
+		_, a, _ := attr.Lookup(0, "required_all")
+		_, b, _ := attr.Lookup(0, "contains_any")
+		_, c, _ := attr.Lookup(0, "not_contains")
+		return a || b || c
 	}
 	return false
 }

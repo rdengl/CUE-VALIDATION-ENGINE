@@ -8,6 +8,8 @@ import java.util.*;
 
 public class CueSchemaGenerator {
 
+    private static final String DEFAULT_DECIMAL_PRECISION = "2";
+
     public static void main(String[] args) throws Exception {
         String jsonInput = """
         {
@@ -16,6 +18,18 @@ public class CueSchemaGenerator {
               "automationRules": [
                 {
                   "templateAutomationRule": [
+                    {
+                      "type": "number",
+                      "parameter": "parentLevelDecimal",
+                      "oprator": "GreaterThanOrEqual",
+                      "value": "0.00"
+                    },
+                    {
+                      "type": "number",
+                      "parameter": "parentLevelDecimal",
+                      "oprator": "LessThanOrEqual",
+                      "value": "9999999999.99"
+                    },
                     {
                       "type": "int",
                       "parameter": "age",
@@ -33,6 +47,24 @@ public class CueSchemaGenerator {
                       "parameter": "name",
                       "oprator": "Equals",
                       "value": "John"
+                    },
+                    {
+                      "type": "list",
+                      "parameter": "roles",
+                      "oprator": "required_all",
+                      "value": "admin,user"
+                    },
+                    {
+                      "type": "list",
+                      "parameter": "roles1",
+                      "oprator": "not_contains",
+                      "value": "guest"
+                    },
+                    {
+                      "type": "list",
+                      "parameter": "roles2",
+                      "oprator": "contains_any",
+                      "value": "manager,supervisor"
                     }
                   ]
                 }
@@ -42,19 +74,21 @@ public class CueSchemaGenerator {
         }
         """;
 
-        String cueSchema = generateCueSchemaFromJson(jsonInput);
-        System.out.println("Generated CUE Schema:\n" + cueSchema);
+        System.out.println("From parentAttr:");
+        System.out.println(generateCueSchemaFromJson(jsonInput, "parentAttr"));
+        System.out.println("\nFrom childWithArr:");
+        System.out.println(generateCueSchemaFromJson(jsonInput, "childWithArr"));
     }
 
-    public static String generateCueSchemaFromJson(String jsonString) throws Exception {
+    public static String generateCueSchemaFromJson(String jsonString, String callerType) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         JsonNode root = mapper.readTree(jsonString);
 
         StringBuilder cueSchema = new StringBuilder();
         cueSchema.append("Request: {\n");
 
-        // Collect all rules grouped by parameter
         Map<String, List<Rule>> paramRules = new LinkedHashMap<>();
+        Map<String, Map<String, List<String>>> listTags = new LinkedHashMap<>();
 
         JsonNode ruleNodes = root.path("wirelesssConfigRule");
         for (JsonNode configRule : ruleNodes) {
@@ -69,21 +103,47 @@ public class CueSchemaGenerator {
 
                     if (parameter == null || parameter.isEmpty()) continue;
 
-                    paramRules
-                            .computeIfAbsent(parameter, k -> new ArrayList<>())
-                            .add(new Rule(type, operator, value));
+                    if ("list".equalsIgnoreCase(type) && Set.of("required_all", "contains_any", "not_contains").contains(operator)) {
+                        listTags.computeIfAbsent(parameter, k -> new LinkedHashMap<>())
+                                .computeIfAbsent(operator, k -> new ArrayList<>())
+                                .addAll(Arrays.asList(value.split(",")));
+                    } else {
+                        paramRules.computeIfAbsent(parameter, k -> new ArrayList<>())
+                                .add(new Rule(type, operator, value));
+                    }
                 }
             }
         }
 
-        // Generate merged CUE rules per parameter
+        String fieldBlock = generateFieldBlocks(paramRules, listTags, callerType.equals("childWithArr") ? "    " : "  ");
+
+        if (callerType.equals("childWithArr")) {
+            cueSchema.append("  rawData: [...{\n").append(fieldBlock).append("  }]\n");
+        } else {
+            cueSchema.append(fieldBlock);
+        }
+
+        cueSchema.append("}\n");
+        return cueSchema.toString();
+    }
+
+    private static String generateFieldBlocks(
+            Map<String, List<Rule>> paramRules,
+            Map<String, Map<String, List<String>>> listTags,
+            String indent
+    ) {
+        StringBuilder sb = new StringBuilder();
+
         for (Map.Entry<String, List<Rule>> entry : paramRules.entrySet()) {
             String param = entry.getKey();
             List<Rule> rules = entry.getValue();
 
             String baseType = determineBaseType(rules);
             StringBuilder conditionBuilder = new StringBuilder();
+
+            boolean isDecimal = false;
             for (Rule r : rules) {
+                if (isDecimal(r.value)) isDecimal = true;
                 String condition = generateCondition(baseType, r.operator, r.value);
                 if (!condition.isEmpty()) {
                     if (conditionBuilder.length() > 0) conditionBuilder.append(" & ");
@@ -91,20 +151,30 @@ public class CueSchemaGenerator {
                 }
             }
 
-            String tagMessage = "@tag(message=\"Validation failed for " + param + "\")";
-            cueSchema.append("  ")
-                    .append(param)
-                    .append(": ")
-                    .append(baseType)
-                    .append(" & ")
-                    .append(conditionBuilder)
-                    .append(" ")
-                    .append(tagMessage)
-                    .append("\n");
+            StringBuilder tag = new StringBuilder("@tag(message=\"Validation failed for " + param + "\"");
+            if ("number".equalsIgnoreCase(baseType) && isDecimal) {
+                tag.append(", decimal=\"").append(DEFAULT_DECIMAL_PRECISION).append("\"");
+            }
+            tag.append(")");
+
+            sb.append(indent).append(param).append(": ").append(baseType).append(" & ")
+                    .append(conditionBuilder).append(" ").append(tag).append("\n");
         }
 
-        cueSchema.append("}\n");
-        return cueSchema.toString();
+        for (Map.Entry<String, Map<String, List<String>>> entry : listTags.entrySet()) {
+            String param = entry.getKey();
+            Map<String, List<String>> tagMap = entry.getValue();
+
+            StringBuilder tagBuilder = new StringBuilder("@tag(");
+            for (Map.Entry<String, List<String>> t : tagMap.entrySet()) {
+                tagBuilder.append(t.getKey()).append("=\"[").append(String.join(",", t.getValue())).append("]\", ");
+            }
+            tagBuilder.append("message=\"Validation failed for ").append(param).append("\")");
+
+            sb.append(indent).append(param).append(": [...string] ").append(tagBuilder).append("\n");
+        }
+
+        return sb.toString();
     }
 
     private static String generateCondition(String typePrefix, String operator, String value) {
@@ -151,7 +221,7 @@ public class CueSchemaGenerator {
     private static String determineBaseType(List<Rule> rules) {
         for (Rule rule : rules) {
             if ("int".equalsIgnoreCase(rule.type) || isInteger(rule.value)) return "int";
-            if ("float".equalsIgnoreCase(rule.type) || isDecimal(rule.value)) return "number";
+            if ("float".equalsIgnoreCase(rule.type) || "number".equalsIgnoreCase(rule.type) || isDecimal(rule.value)) return "number";
             if ("bool".equalsIgnoreCase(rule.type)) return "bool";
         }
         return "string";
