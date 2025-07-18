@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
@@ -64,7 +65,6 @@ func validateRecursive(path string, schemaField, dataField cue.Value, resultMap 
 			(*resultMap)[fullPath] = "valid"
 		}
 
-		// Skip individual item validation if list-level tags present
 		if hasListLevelTags(schemaField) {
 			return
 		}
@@ -108,19 +108,10 @@ func validateRecursive(path string, schemaField, dataField cue.Value, resultMap 
 }
 
 func validateScalar(field string, schemaField, dataField cue.Value, resultMap *map[string]string) {
-	if err := schemaField.Unify(dataField).Validate(); err != nil {
-		msg := getCustomMessage(schemaField)
-		if msg == "" {
-			msg = err.Error()
-		}
-		(*resultMap)[field] = msg
-		return
-	}
-
 	attr := schemaField.Attribute("tag")
 
+	// Decimal validation
 	if attr.Err() == nil {
-		// Exact decimal
 		if val, found, _ := attr.Lookup(0, "decimal"); found {
 			expected, _ := strconv.Atoi(strings.Trim(val, `"`))
 			actual := getDecimalPlaces(dataField)
@@ -134,7 +125,6 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 			}
 		}
 
-		// Max decimal
 		if val, found, _ := attr.Lookup(0, "decimal_max"); found {
 			max, _ := strconv.Atoi(strings.Trim(val, `"`))
 			actual := getDecimalPlaces(dataField)
@@ -147,6 +137,28 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				return
 			}
 		}
+
+		if val, found, _ := attr.Lookup(0, "date"); found {
+			expectedFormat := strings.Trim(val, `"`)
+			dateStr, err := dataField.String()
+			if err == nil && !validateDateFormat(dateStr, expectedFormat) {
+				msg := getCustomMessage(schemaField)
+				if msg == "" {
+					msg = fmt.Sprintf("Invalid date format, expected: %s", expectedFormat)
+				}
+				(*resultMap)[field] = msg
+				return
+			}
+		}
+	}
+
+	if err := schemaField.Unify(dataField).Validate(); err != nil {
+		msg := getCustomMessage(schemaField)
+		if msg == "" {
+			msg = err.Error()
+		}
+		(*resultMap)[field] = msg
+		return
 	}
 
 	(*resultMap)[field] = "valid"
@@ -159,12 +171,32 @@ func getDecimalPlaces(val cue.Value) int {
 		return 0
 	}
 	raw := string(b)
-	raw = strings.Trim(raw, `"`)
+	raw = strings.Trim(raw, `"`) // Remove quotes if it's a string
+	if !strings.Contains(raw, ".") {
+		return 0
+	}
 	parts := strings.Split(raw, ".")
 	if len(parts) != 2 {
 		return 0
 	}
-	return len(strings.TrimRight(parts[1], "0"))
+	return len(parts[1]) // <-- DO NOT trim trailing zeros
+}
+
+func validateDateFormat(value, layout string) bool {
+	goLayout := convertToGoLayout(layout)
+	_, err := time.Parse(goLayout, value)
+	return err == nil
+}
+
+func convertToGoLayout(format string) string {
+	return strings.NewReplacer(
+		"yyyy", "2006",
+		"MM", "01",
+		"dd", "02",
+		"HH", "15",
+		"mm", "04",
+		"ss", "05",
+	).Replace(format)
 }
 
 func getCustomMessage(v cue.Value) string {
