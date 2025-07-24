@@ -110,7 +110,9 @@ public class CueValidationController {
 		System.out.println("json: "+request.getJson());
 		System.out.println("Schema: "+request.getSchema());
 
-		String result = CueValidatorLibrary.INSTANCE.ValidateJSONWithCue(request.getSchema(),request.getJson());
+		CueValidatorLoader.CueValidatorLibrary instance = CueValidatorLoader.getInstance();
+		String result = instance.ValidateJSONWithCue(request.getSchema(),request.getJson());
+
 
 		System.out.println(result);
 		// Convert JSON array string to List<String>

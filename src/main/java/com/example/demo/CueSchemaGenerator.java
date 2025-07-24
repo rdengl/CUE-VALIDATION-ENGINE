@@ -24,36 +24,7 @@ public class CueSchemaGenerator {
                       "oprator": "GreaterThanOrEqual",
                       "value": "0.00"
                     },
-                    {
-                      "type": "number",
-                      "parameter": "parentLevelDecimal",
-                      "oprator": "LessThanOrEqual",
-                      "value": "9999999999.99"
-                    },
-                    {
-                      "type": "int",
-                      "parameter": "age",
-                      "oprator": "GreaterThan",
-                      "value": "18"
-                    },
-                    {
-                      "type": "int",
-                      "parameter": "age",
-                      "oprator": "LessThan",
-                      "value": "60"
-                    },
-                    {
-                      "type": "string",
-                      "parameter": "name",
-                      "oprator": "Equals",
-                      "value": "John"
-                    },
-                    {
-                      "type": "list",
-                      "parameter": "roles",
-                      "oprator": "required_all",
-                      "value": "admin,user"
-                    },
+                   
                     {
                       "type": "list",
                       "parameter": "roles1",
