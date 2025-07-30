@@ -1,5 +1,6 @@
 package com.example.demo;
 
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -21,20 +22,19 @@ public class CueSchemaGenerator {
                     {
                       "type": "number",
                       "parameter": "parentLevelDecimal",
-                      "oprator": "GreaterThanOrEqual",
+                      "oprator": "equals",
                       "value": "0.00"
                     },
-                   
                     {
                       "type": "list",
-                      "parameter": "roles1",
-                      "oprator": "not_contains",
+                      "parameter": "roles",
+                      "oprator": "equals",
                       "value": "guest"
                     },
                     {
                       "type": "list",
-                      "parameter": "roles2",
-                      "oprator": "contains_any",
+                      "parameter": "roles",
+                      "oprator": "equals",
                       "value": "manager,supervisor"
                     }
                   ]
@@ -59,7 +59,7 @@ public class CueSchemaGenerator {
         cueSchema.append("Request: {\n");
 
         Map<String, List<Rule>> paramRules = new LinkedHashMap<>();
-        Map<String, Map<String, List<String>>> listTags = new LinkedHashMap<>();
+        Map<String, Map<String, Set<String>>> listTags = new LinkedHashMap<>();
 
         JsonNode ruleNodes = root.path("wirelesssConfigRule");
         for (JsonNode configRule : ruleNodes) {
@@ -74,10 +74,13 @@ public class CueSchemaGenerator {
 
                     if (parameter == null || parameter.isEmpty()) continue;
 
-                    if ("list".equalsIgnoreCase(type) && Set.of("required_all", "contains_any", "not_contains").contains(operator)) {
+                    if ("list".equalsIgnoreCase(type)) {
                         listTags.computeIfAbsent(parameter, k -> new LinkedHashMap<>())
-                                .computeIfAbsent(operator, k -> new ArrayList<>())
-                                .addAll(Arrays.asList(value.split(",")));
+                                .computeIfAbsent(operator.toLowerCase(), k -> new LinkedHashSet<>())
+                                .addAll(Arrays.stream(value.split(","))
+                                        .map(String::trim)
+                                        .filter(s -> !s.isEmpty())
+                                        .toList());
                     } else {
                         paramRules.computeIfAbsent(parameter, k -> new ArrayList<>())
                                 .add(new Rule(type, operator, value));
@@ -100,7 +103,7 @@ public class CueSchemaGenerator {
 
     private static String generateFieldBlocks(
             Map<String, List<Rule>> paramRules,
-            Map<String, Map<String, List<String>>> listTags,
+            Map<String, Map<String, Set<String>>> listTags,
             String indent
     ) {
         StringBuilder sb = new StringBuilder();
@@ -111,8 +114,8 @@ public class CueSchemaGenerator {
 
             String baseType = determineBaseType(rules);
             StringBuilder conditionBuilder = new StringBuilder();
-
             boolean isDecimal = false;
+
             for (Rule r : rules) {
                 if (isDecimal(r.value)) isDecimal = true;
                 String condition = generateCondition(baseType, r.operator, r.value);
@@ -132,17 +135,28 @@ public class CueSchemaGenerator {
                     .append(conditionBuilder).append(" ").append(tag).append("\n");
         }
 
-        for (Map.Entry<String, Map<String, List<String>>> entry : listTags.entrySet()) {
+        for (Map.Entry<String, Map<String, Set<String>>> entry : listTags.entrySet()) {
             String param = entry.getKey();
-            Map<String, List<String>> tagMap = entry.getValue();
+            Map<String, Set<String>> opMap = entry.getValue();
 
-            StringBuilder tagBuilder = new StringBuilder("@tag(");
-            for (Map.Entry<String, List<String>> t : tagMap.entrySet()) {
-                tagBuilder.append(t.getKey()).append("=\"[").append(String.join(",", t.getValue())).append("]\", ");
+            Set<String> mergedValues = new LinkedHashSet<>();
+            String primaryOperator = "contains_any";
+
+            for (Map.Entry<String, Set<String>> opEntry : opMap.entrySet()) {
+                String op = opEntry.getKey();
+                mergedValues.addAll(opEntry.getValue());
+
+                if (Set.of("contains_any", "not_contains", "required_all").contains(op) &&
+                        primaryOperator.equals("contains_any")) {
+                    primaryOperator = op;
+                }
             }
-            tagBuilder.append("message=\"Validation failed for ").append(param).append("\")");
 
-            sb.append(indent).append(param).append(": [...string] ").append(tagBuilder).append("\n");
+            String valuesStr = "[" + String.join(",", mergedValues) + "]";
+            String tagStr = String.format("@tag(%s=\"%s\", message=\"Validation failed for %s\")",
+                    primaryOperator, valuesStr, param);
+
+            sb.append(indent).append(param).append(": [...string] ").append(tagStr).append("\n");
         }
 
         return sb.toString();
@@ -210,3 +224,4 @@ public class CueSchemaGenerator {
         }
     }
 }
+
