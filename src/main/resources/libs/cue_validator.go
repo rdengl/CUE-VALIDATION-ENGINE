@@ -122,7 +122,7 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				if msg == "" {
 					msg = fmt.Sprintf("Must have exactly %d decimal places", expected)
 				}
-				(*resultMap)[field] = fmt.Sprintf("%s (Received: %s)", msg, actualVal)
+				(*resultMap)[field] = fmt.Sprintf("%s (Received Value: %s)", msg, actualVal)
 				return
 			}
 		}
@@ -135,7 +135,7 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				if msg == "" {
 					msg = fmt.Sprintf("Must have at most %d decimal places", max)
 				}
-				(*resultMap)[field] = fmt.Sprintf("%s (Received: %s)", msg, actualVal)
+				(*resultMap)[field] = fmt.Sprintf("%s (Received Value: %s)", msg, actualVal)
 				return
 			}
 		}
@@ -149,7 +149,7 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				if msg == "" {
 					msg = fmt.Sprintf("Invalid date format, expected: %s", expectedFormat)
 				}
-				(*resultMap)[field] = fmt.Sprintf("%s (Received: %s)", msg, actualVal)
+				(*resultMap)[field] = fmt.Sprintf("%s (Received Value: %s)", msg, actualVal)
 				return
 			}
 		}
@@ -160,7 +160,7 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 		if msg == "" {
 			msg = err.Error()
 		}
-		(*resultMap)[field] = fmt.Sprintf("%s (Received: %s)", msg, actualVal)
+		(*resultMap)[field] = fmt.Sprintf("%s (Received Value: %s)", msg, actualVal)
 		return
 	}
 
@@ -241,18 +241,18 @@ func applyListValidations(v cue.Value, values []string) string {
 	if requiredAll != nil {
 		missing := missingValues(values, requiredAll)
 		if len(missing) > 0 {
-			return fmt.Sprintf("%s - Missing: [%s], Received: [%s]", msg, strings.Join(missing, ", "), strings.Join(values, ", "))
+			return fmt.Sprintf("%s - Missing: [%s], Received Value: [%s]", msg, strings.Join(missing, ", "), strings.Join(values, ", "))
 		}
 	}
 
 	if containsAny != nil && !containsAnyOne(values, containsAny) {
-		return fmt.Sprintf("%s - Expected any of [%s], Received: [%s]", msg, strings.Join(containsAny, ", "), strings.Join(values, ", "))
+		return fmt.Sprintf("%s - Expected any of [%s], Received Value: [%s]", msg, strings.Join(containsAny, ", "), strings.Join(values, ", "))
 	}
 
 	if notContains != nil {
 		forbidden := intersect(values, notContains)
 		if len(forbidden) > 0 {
-			return fmt.Sprintf("%s - Forbidden values present: [%s], Received: [%s]", msg, strings.Join(forbidden, ", "), strings.Join(values, ", "))
+			return fmt.Sprintf("%s - Invalid values found: [%s], Received Value: [%s]", msg, strings.Join(forbidden, ", "), strings.Join(values, ", "))
 		}
 	}
 
