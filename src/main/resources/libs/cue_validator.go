@@ -24,13 +24,11 @@ func ValidateJSONWithCue(schemaStr *C.char, jsonStr *C.char) *C.char {
 
 	ctx := cuecontext.New()
 
-	// Compile schema
 	cueSchemaVal := ctx.CompileString(schema)
 	if cueSchemaVal.Err() != nil {
 		return C.CString(fmt.Sprintf(`{"error": "Invalid schema: %s"}`, cueSchemaVal.Err()))
 	}
 
-	// Compile JSON data
 	cueJSONVal := ctx.CompileString(jsonData)
 	if cueJSONVal.Err() != nil {
 		return C.CString(fmt.Sprintf(`{"error": "Invalid JSON: %s"}`, cueJSONVal.Err()))
@@ -40,7 +38,7 @@ func ValidateJSONWithCue(schemaStr *C.char, jsonStr *C.char) *C.char {
 	jsonVal := cueJSONVal.LookupPath(cue.ParsePath("Request"))
 
 	resultMap := make(map[string]string)
-	validateRecursive("Request", schemaVal, jsonVal, &resultMap)
+	validateRecursive("", schemaVal, jsonVal, &resultMap)
 
 	resultJSON, err := json.Marshal(resultMap)
 	if err != nil {
@@ -95,7 +93,11 @@ func validateRecursive(path string, schemaField, dataField cue.Value, resultMap 
 		fields, _ := schemaField.Fields()
 		for fields.Next() {
 			field := fields.Selector().String()
-			validateRecursive(fmt.Sprintf("%s.%s", path, field),
+			newPath := field
+			if path != "" {
+				newPath = path + "." + field
+			}
+			validateRecursive(newPath,
 				schemaField.LookupPath(cue.ParsePath(field)),
 				dataField.LookupPath(cue.ParsePath(field)),
 				resultMap,
@@ -109,8 +111,8 @@ func validateRecursive(path string, schemaField, dataField cue.Value, resultMap 
 
 func validateScalar(field string, schemaField, dataField cue.Value, resultMap *map[string]string) {
 	attr := schemaField.Attribute("tag")
+	actualVal := extractCueValueAsString(dataField)
 
-	// Decimal validation
 	if attr.Err() == nil {
 		if val, found, _ := attr.Lookup(0, "decimal"); found {
 			expected, _ := strconv.Atoi(strings.Trim(val, `"`))
@@ -120,7 +122,7 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				if msg == "" {
 					msg = fmt.Sprintf("Must have exactly %d decimal places", expected)
 				}
-				(*resultMap)[field] = msg
+				(*resultMap)[field] = fmt.Sprintf("%s (Received: %s)", msg, actualVal)
 				return
 			}
 		}
@@ -133,20 +135,21 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				if msg == "" {
 					msg = fmt.Sprintf("Must have at most %d decimal places", max)
 				}
-				(*resultMap)[field] = msg
+				(*resultMap)[field] = fmt.Sprintf("%s (Received: %s)", msg, actualVal)
 				return
 			}
 		}
 
 		if val, found, _ := attr.Lookup(0, "date"); found {
 			expectedFormat := strings.Trim(val, `"`)
+
 			dateStr, err := dataField.String()
 			if err == nil && !validateDateFormat(dateStr, expectedFormat) {
 				msg := getCustomMessage(schemaField)
 				if msg == "" {
 					msg = fmt.Sprintf("Invalid date format, expected: %s", expectedFormat)
 				}
-				(*resultMap)[field] = msg
+				(*resultMap)[field] = fmt.Sprintf("%s (Received: %s)", msg, actualVal)
 				return
 			}
 		}
@@ -157,7 +160,7 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 		if msg == "" {
 			msg = err.Error()
 		}
-		(*resultMap)[field] = msg
+		(*resultMap)[field] = fmt.Sprintf("%s (Received: %s)", msg, actualVal)
 		return
 	}
 
@@ -171,7 +174,7 @@ func getDecimalPlaces(val cue.Value) int {
 		return 0
 	}
 	raw := string(b)
-	raw = strings.Trim(raw, `"`) // Remove quotes if it's a string
+	raw = strings.Trim(raw, `"`)
 	if !strings.Contains(raw, ".") {
 		return 0
 	}
@@ -179,7 +182,7 @@ func getDecimalPlaces(val cue.Value) int {
 	if len(parts) != 2 {
 		return 0
 	}
-	return len(parts[1]) // <-- DO NOT trim trailing zeros
+	return len(parts[1])
 }
 
 func validateDateFormat(value, layout string) bool {
@@ -208,27 +211,20 @@ func getCustomMessage(v cue.Value) string {
 	return ""
 }
 
+func extractCueValueAsString(val cue.Value) string {
+	syntax := val.Syntax()
+	if b, err := format.Node(syntax); err == nil {
+		return strings.Trim(string(b), `"`)
+	}
+	return "invalid"
+}
+
 func extractListValues(data cue.Value) []string {
 	list := []string{}
 	iter, _ := data.List()
 	for iter.Next() {
 		val := iter.Value()
-		switch val.IncompleteKind() {
-		case cue.StringKind:
-			strVal, _ := val.String()
-			list = append(list, strVal)
-		case cue.IntKind:
-			intVal, _ := val.Int64()
-			list = append(list, fmt.Sprintf("%d", intVal))
-		case cue.NumberKind:
-			node := val.Syntax()
-			b, err := format.Node(node)
-			if err != nil {
-				list = append(list, "invalid_number")
-			} else {
-				list = append(list, strings.Trim(string(b), `"`))
-			}
-		}
+		list = append(list, extractCueValueAsString(val))
 	}
 	return list
 }
@@ -245,18 +241,18 @@ func applyListValidations(v cue.Value, values []string) string {
 	if requiredAll != nil {
 		missing := missingValues(values, requiredAll)
 		if len(missing) > 0 {
-			return fmt.Sprintf("%s Values : [%s]", msg, strings.Join(missing, ", "))
+			return fmt.Sprintf("%s - Missing: [%s], Received: [%s]", msg, strings.Join(missing, ", "), strings.Join(values, ", "))
 		}
 	}
 
 	if containsAny != nil && !containsAnyOne(values, containsAny) {
-		return fmt.Sprintf("%s - Values : [%s]", msg, strings.Join(containsAny, ", "))
+		return fmt.Sprintf("%s - Expected any of [%s], Received: [%s]", msg, strings.Join(containsAny, ", "), strings.Join(values, ", "))
 	}
 
 	if notContains != nil {
 		forbidden := intersect(values, notContains)
 		if len(forbidden) > 0 {
-			return fmt.Sprintf("%s - Values: %s", msg, strings.Join(forbidden, ", "))
+			return fmt.Sprintf("%s - Forbidden values present: [%s], Received: [%s]", msg, strings.Join(forbidden, ", "), strings.Join(values, ", "))
 		}
 	}
 
@@ -308,19 +304,6 @@ func getTagList(v cue.Value, tagName string) []string {
 		}
 	}
 	return nil
-}
-
-func containsAll(haystack, needles []string) bool {
-	set := make(map[string]struct{})
-	for _, v := range haystack {
-		set[v] = struct{}{}
-	}
-	for _, n := range needles {
-		if _, ok := set[n]; !ok {
-			return false
-		}
-	}
-	return true
 }
 
 func containsAnyOne(haystack, needles []string) bool {

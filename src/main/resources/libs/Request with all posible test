@@ -1,0 +1,48 @@
+
+
+{
+  "Request": {
+    "name": "John Doe",
+    "age": 30,
+    "skills": ["Java", "Docker", "Git"],
+    "tags": ["backend", "api", "microservice"],
+    "flags": ["active", "modern"]
+  }
+}
+
+Request: {
+  name: string & !="" @tag(message="Name cannot be empty")
+
+  age: int & >= 18 & <= 60 @tag(message="Age must be between 18 and 60")
+
+  skills: [...string] @tag(
+    contains_any="Java1,Go,C++",
+    required_all="Git,Docker",
+    not_contains="Cobol",
+    message="Skills validation failed"
+  )
+
+  tags: [...string] @tag(
+    required_all="backend,api",
+    message="Tags must include backend and api"
+  )
+
+  flags: [...string] @tag(
+    not_contains="deprecated,legacy",
+    message="Flags should not include deprecated items"
+  )
+}
+
+-------------------------------
+{
+    "json": "{\r\n  \"Request\": {\r\n    \"name\": \"John Doe\",\r\n    \"age\": 340,\r\n    \"skills\": [\"Java1\", \"Docker\", \"Git\"],\r\n    \"tags\": [\"backend\", \"api\", \"microservice\"],\r\n    \"flags\": [\"active\", \"modern\"]\r\n  }\r\n}\r\n",
+    "schema": "Request: {\r\n  name: string & !=\"\" @tag(message=\"Name cannot be empty\")\r\n\r\n  age: int & >= 18 & <= 60 @tag(message=\"Age must be between 18 and 60\")\r\n\r\n  skills: [...string] @tag(\r\n    contains_any=\"Java,Go,C++\",\r\n    required_all=\"Git1,Docker\",\r\n    not_contains=\"Cobol\",\r\n    message=\"Skills validation failed\"\r\n  )\r\n\r\n  tags: [...string] @tag(\r\n    required_all=\"backend1,api\",\r\n    message=\"Tags must include backend and api\"\r\n  )\r\n\r\n  flags: [...string] @tag(\r\n    not_contains=\"deprecated,legacy\",\r\n    message=\"Flags should not include deprecated items\"\r\n  )\r\n}\r\n"
+}
+
+
+------------------
+
+{
+  "json": "{\r\n  \"Request\": {\r\n    \"age\": 33,\r\n    \"name\": \"Alice\",\r\n    \"salary\": 50000,\r\n    \"dobFormat1\": \"2006-01-02 15:04:05\",\r\n\t\"dobFo1rmat2\": \"1990-05-12\",\r\n\t\"dobFormat3\": \"01-02-20061\",\r\n\t\"parentLevelDeciaml\": 77.644,\r\n    \"children\": [\r\n      {\r\n        \"id\": \"001\",\r\n        \"address\": \"123 Street\",\r\n        \"status\": \"active\",\r\n\t\t\"childLevelDeciaml\":76.300\r\n      }\r\n    ]\r\n  }\r\n}",
+  "schema": "Request: {\r\n  age: int & >= 18 & <= 60 @tag(message=\"Age must be between 18 and 60\")\r\n  name: string & !=\"\" @tag(message=\"Name must not be empty\")\r\n  salary: int @tag(message=\"Salary must be an integer and not null\")\r\n  dobFormat1: string & =~\"^\\\\d{4}-\\\\d{2}-\\\\d{2} \\\\d{2}:\\\\d{2}:\\\\d{2}$\" @tag(message=\"Date must be in yyyy-MM-dd HH:mm:ss format\", date=\"yyyy-MM-dd HH:mm:ss\")\r\n  dobFormat2: string & =~\"^\\\\d{4}-\\\\d{2}-\\\\d{2}$\" @tag(message=\"Date must be in yyyy-MM-dd format\", date=\"yyyy-MM-dd\")\r\n  dobFormat3: string & =~\"^\\\\d{2}-\\\\d{2}-\\\\d{4}$\" @tag(message=\"\", date=\"MM-dd-yyyy\")\r\n   parentLevelDeciaml: number & >=0.00 & <=9999999999.99 @tag(message=\"Invalid amount\", decimal=\"2\")\r\n  children: [...{\r\n    id: string & !=\"\" @tag(message=\"Child ID must not be empty\")\r\n    address: string & !=\"\" @tag(message=\"Child address must not be empty\")\r\n    status: \"active\" @tag(message=\"Status must be 'active'\")\r\n\tchildLevelDeciaml: number & >=0.00 & <=9999999999.99 @tag(message=\"Invalid amount\", decimal=\"2\")\r\n  }]\r\n}"
+}
