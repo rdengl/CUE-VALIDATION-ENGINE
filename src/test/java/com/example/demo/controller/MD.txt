@@ -1,0 +1,11 @@
+| Rule name              | Expression generated                 | Meaning in validation                                                             |
+| ---------------------- | ------------------------------------ | --------------------------------------------------------------------------------- |
+| **`min`**              | `& >= value`                         | The number must be **greater than or equal** to the given value.                  |
+| **`max`**              | `& <= value`                         | The number must be **less than or equal** to the given value.                     |
+| **`not_empty`**        | `& != ""`                            | The string must **not** be empty.                                                 |
+| **`min_chars`**        | `& len >= value`                     | The string’s **length** must be at least `value`.                                 |
+| **`max_chars`**        | `& len <= value`                     | The string’s **length** must be at most `value`.                                  |
+| **`must_contain`**     | `& =~".*<value>.*"`                  | The string must **contain** the given substring (regex).                          |
+| **`must_not_contain`** | `& !~".*<value>.*"`                  | The string must **NOT contain** the given substring (regex).                      |
+| **`decimal`**          | `& =~"^[0-9]+(\\.[0-9]{value})?$"`   | Number must be decimal with **exactly** `<value>` digits after the decimal point. |
+| **`decimal_max`**      | `& =~"^[0-9]+(\\.[0-9]{1,value})?$"` | Number must be decimal with **at most** `<value>` digits after the decimal point. |
