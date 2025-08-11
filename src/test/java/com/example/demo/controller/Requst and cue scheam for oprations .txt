@@ -1,0 +1,66 @@
+
+
+Request: {
+	age: int & >=18 & <=60 @tag(message="Age must be between 18 and 60", min_chars="1")
+	status: string @tag(must_contain="active", message="Status must contain 'active'")
+	childLevelDecimal: number @tag(decimal="2", message="Must have exactly 2 decimal places")
+	salary: int @tag(max_chars="6", message="Salary must be less than 6 characters")
+	name: string & !="" @tag(must_not_contain="Alice", message="Name must not contain 'Alice'")
+}
+
+{
+	"Request": {
+		"age": 25,
+		"status": "active_employee",
+		"childLevelDecimal": 123.45,
+		"salary": 12345,
+		"name": "Bob"
+	}
+}
+
+{\r\n\t\"Request\": {\r\n\t\t\"age\": 25,\r\n\t\t\"status\": \"active_employee\",\r\n\t\t\"childLevelDecimal\": 123.45,\r\n\t\t\"salary\": 12345,\r\n\t\t\"name\": \"Bob\"\r\n\t}\r\n}\r\n
+
+
+Request: {\r\n\tage: int & >=18 & <=60 @tag(message=\"Age must be between 18 and 60\", min_chars=\"1\")\r\n\tstatus: string @tag(must_contain=\"active\", message=\"Status must contain 'active'\")\r\n\tchildLevelDecimal: number @tag(decimal=\"2\", message=\"Must have exactly 2 decimal places\")\r\n\tsalary: int @tag(max_chars=\"6\", message=\"Salary must be less than 6 characters\")\r\n\tname: string & !=\"\" @tag(must_not_contain=\"Alice\", message=\"Name must not contain 'Alice'\")\r\n}\r\n
+
+
+write Cue schema and request json  having all the validation like must_contain,min_chars, max_chars,must_not_contain
+
+
+
+Request: {
+	// Number: must be between 18 and 60 and not empty
+	age: int & >=18 & <=60 @tag(message="Age must be between 18 and 60", min_chars="1")
+
+	// String: must contain "active" and have min/max chars
+	status: string @tag(must_contain="active", min_chars="6", max_chars="20", message="Status must contain 'active' and be 6–20 chars long")
+
+	// Decimal: exactly 2 decimal places
+	childLevelDecimal: number @tag(decimal="2", message="Must have exactly 2 decimal places")
+
+	// Decimal: max 3 decimal places allowed
+	price: number @tag(decimal_max="3", message="Must have at most 3 decimal places")
+
+	// String: must not contain 'Alice'
+	name: string & !="" @tag(must_not_contain="Alice", message="Name must not contain 'Alice'")
+
+	// Integer: max 6 characters (digits)
+	salary: int @tag(max_chars="6", message="Salary must be less than 6 characters")
+
+	// String: min and max characters combined
+	description: string @tag(min_chars="10", max_chars="50", message="Description must be between 10 and 50 characters")
+}
+
+
+
+{
+	"Request": {
+		"age": 15, 
+		"status": "user", 
+		"childLevelDecimal": 123.4, 
+		"price": 45.6789, 
+		"name": "Alice Johnson", 
+		"salary": 1234567, 
+		"description": "short"
+	}
+}
