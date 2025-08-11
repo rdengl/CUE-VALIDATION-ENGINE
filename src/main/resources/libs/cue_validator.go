@@ -53,6 +53,7 @@ func validateRecursive(path string, schemaField, dataField cue.Value, resultMap 
 	dataKind := dataField.IncompleteKind()
 	fullPath := path
 
+	// List handling
 	if schemaKind == cue.ListKind && dataKind == cue.ListKind {
 		vals := extractListValues(dataField)
 		listLevelMsg := applyListValidations(schemaField, vals)
@@ -89,6 +90,7 @@ func validateRecursive(path string, schemaField, dataField cue.Value, resultMap 
 		return
 	}
 
+	// Struct handling
 	if schemaKind == cue.StructKind && dataKind == cue.StructKind {
 		fields, _ := schemaField.Fields()
 		for fields.Next() {
@@ -106,6 +108,7 @@ func validateRecursive(path string, schemaField, dataField cue.Value, resultMap 
 		return
 	}
 
+	// Scalar handling
 	validateScalar(fullPath, schemaField, dataField, resultMap)
 }
 
@@ -113,7 +116,18 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 	attr := schemaField.Attribute("tag")
 	actualVal := extractCueValueAsString(dataField)
 
+	// Null or empty check
+	if actualVal == "" || actualVal == "null" {
+		msg := getCustomMessage(schemaField)
+		if msg == "" {
+			msg = fmt.Sprintf("%s must not be null or empty", field)
+		}
+		(*resultMap)[field] = fmt.Sprintf("%s (Input Value: %s)", msg, actualVal)
+		return
+	}
+
 	if attr.Err() == nil {
+		// Decimal exact places
 		if val, found, _ := attr.Lookup(0, "decimal"); found {
 			expected, _ := strconv.Atoi(strings.Trim(val, `"`))
 			actual := getDecimalPlaces(dataField)
@@ -122,11 +136,12 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				if msg == "" {
 					msg = fmt.Sprintf("Must have exactly %d decimal places", expected)
 				}
-				(*resultMap)[field] = fmt.Sprintf("%s (Received Value: %s)", msg, actualVal)
+				(*resultMap)[field] = fmt.Sprintf("%s (Input Value: %s)", msg, actualVal)
 				return
 			}
 		}
 
+		// Decimal max places
 		if val, found, _ := attr.Lookup(0, "decimal_max"); found {
 			max, _ := strconv.Atoi(strings.Trim(val, `"`))
 			actual := getDecimalPlaces(dataField)
@@ -135,32 +150,85 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				if msg == "" {
 					msg = fmt.Sprintf("Must have at most %d decimal places", max)
 				}
-				(*resultMap)[field] = fmt.Sprintf("%s (Received Value: %s)", msg, actualVal)
+				(*resultMap)[field] = fmt.Sprintf("%s (Input Value: %s)", msg, actualVal)
 				return
 			}
 		}
 
+		// Min characters
+		if val, found, _ := attr.Lookup(0, "min_chars"); found {
+			min, _ := strconv.Atoi(strings.Trim(val, `"`))
+			if len(actualVal) < min {
+				msg := getCustomMessage(schemaField)
+				if msg == "" {
+					msg = fmt.Sprintf("Must have at least %d characters", min)
+				}
+				(*resultMap)[field] = fmt.Sprintf("%s (Input Value: %s)", msg, actualVal)
+				return
+			}
+		}
+
+		// Max characters
+		if val, found, _ := attr.Lookup(0, "max_chars"); found {
+			max, _ := strconv.Atoi(strings.Trim(val, `"`))
+			if len(actualVal) > max {
+				msg := getCustomMessage(schemaField)
+				if msg == "" {
+					msg = fmt.Sprintf("Must have at most %d characters", max)
+				}
+				(*resultMap)[field] = fmt.Sprintf("%s (Input Value: %s)", msg, actualVal)
+				return
+			}
+		}
+
+		// Must contain substring
+		if val, found, _ := attr.Lookup(0, "must_contain"); found {
+			sub := strings.Trim(val, `"`)
+			if !strings.Contains(actualVal, sub) {
+				msg := getCustomMessage(schemaField)
+				if msg == "" {
+					msg = fmt.Sprintf("Must contain substring '%s'", sub)
+				}
+				(*resultMap)[field] = fmt.Sprintf("%s (Input Value: %s)", msg, actualVal)
+				return
+			}
+		}
+
+		// Must NOT contain substring
+		if val, found, _ := attr.Lookup(0, "must_not_contain"); found {
+			sub := strings.Trim(val, `"`)
+			if strings.Contains(actualVal, sub) {
+				msg := getCustomMessage(schemaField)
+				if msg == "" {
+					msg = fmt.Sprintf("Must not contain substring '%s'", sub)
+				}
+				(*resultMap)[field] = fmt.Sprintf("%s (Input Value: %s)", msg, actualVal)
+				return
+			}
+		}
+
+		// Date format validation
 		if val, found, _ := attr.Lookup(0, "date"); found {
 			expectedFormat := strings.Trim(val, `"`)
-
 			dateStr, err := dataField.String()
 			if err == nil && !validateDateFormat(dateStr, expectedFormat) {
 				msg := getCustomMessage(schemaField)
 				if msg == "" {
 					msg = fmt.Sprintf("Invalid date format, expected: %s", expectedFormat)
 				}
-				(*resultMap)[field] = fmt.Sprintf("%s (Received Value: %s)", msg, actualVal)
+				(*resultMap)[field] = fmt.Sprintf("%s (Input Value: %s)", msg, actualVal)
 				return
 			}
 		}
 	}
 
+	// CUE core validation
 	if err := schemaField.Unify(dataField).Validate(); err != nil {
 		msg := getCustomMessage(schemaField)
 		if msg == "" {
 			msg = err.Error()
 		}
-		(*resultMap)[field] = fmt.Sprintf("%s (Received Value: %s)", msg, actualVal)
+		(*resultMap)[field] = fmt.Sprintf("%s (Input Value: %s)", msg, actualVal)
 		return
 	}
 
@@ -241,18 +309,18 @@ func applyListValidations(v cue.Value, values []string) string {
 	if requiredAll != nil {
 		missing := missingValues(values, requiredAll)
 		if len(missing) > 0 {
-			return fmt.Sprintf("%s - Missing: [%s], Received Value: [%s]", msg, strings.Join(missing, ", "), strings.Join(values, ", "))
+			return fmt.Sprintf("%s - Missing: [%s], Input Value: [%s]", msg, strings.Join(missing, ", "), strings.Join(values, ", "))
 		}
 	}
 
 	if containsAny != nil && !containsAnyOne(values, containsAny) {
-		return fmt.Sprintf("%s - Expected any of [%s], Received Value: [%s]", msg, strings.Join(containsAny, ", "), strings.Join(values, ", "))
+		return fmt.Sprintf("%s - Expected any of [%s], Input Value: [%s]", msg, strings.Join(containsAny, ", "), strings.Join(values, ", "))
 	}
 
 	if notContains != nil {
 		forbidden := intersect(values, notContains)
 		if len(forbidden) > 0 {
-			return fmt.Sprintf("%s - Invalid values found: [%s], Received Value: [%s]", msg, strings.Join(forbidden, ", "), strings.Join(values, ", "))
+			return fmt.Sprintf("%s - Invalid values found: [%s], Input Value: [%s]", msg, strings.Join(forbidden, ", "), strings.Join(values, ", "))
 		}
 	}
 
