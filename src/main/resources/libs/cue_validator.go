@@ -8,14 +8,59 @@ import "C"
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 	"cuelang.org/go/cue/format"
 )
+
+// sanitizeAndCheckUTF8 removes BOM, replaces non-breaking spaces,
+// and checks for invalid UTF-8 characters.
+func sanitizeAndCheckUTF8(input string) (string, error) {
+	// Remove BOM if present
+	if strings.HasPrefix(input, "\uFEFF") {
+		input = strings.TrimPrefix(input, "\uFEFF")
+	}
+	// Replace non-breaking spaces with normal spaces
+	input = strings.ReplaceAll(input, "\u00A0", " ")
+	// Check UTF-8 validity
+	if !utf8.ValidString(input) {
+		return input, fmt.Errorf("schema contains invalid UTF-8 characters")
+	}
+	return input, nil
+}
+
+// validateSchema performs UTF-8 cleaning, checks for bad characters, compiles & validates CUE schema.
+func validateSchema(ctx *cue.Context, schema string) error {
+	// Step 1: Sanitize & check UTF-8
+	cleaned, err := sanitizeAndCheckUTF8(schema)
+	if err != nil {
+		return err
+	}
+
+	// Step 2: Warn about suspicious characters (smart quotes/dashes)
+	if match, _ := regexp.MatchString(`[“”–—]`, cleaned); match {
+		return fmt.Errorf("schema contains smart quotes or en-dash characters; replace with standard quotes/hyphens")
+	}
+
+	// Step 3: Compile
+	val := ctx.CompileString(cleaned)
+	if val.Err() != nil {
+		return fmt.Errorf("CUE compile error: %w", val.Err())
+	}
+
+	// Step 4: Validate structure
+	if err := val.Validate(); err != nil {
+		return fmt.Errorf("CUE validation error: %w", err)
+	}
+
+	return nil
+}
 
 //export ValidateJSONWithCue
 func ValidateJSONWithCue(schemaStr *C.char, jsonStr *C.char) *C.char {
@@ -24,17 +69,18 @@ func ValidateJSONWithCue(schemaStr *C.char, jsonStr *C.char) *C.char {
 
 	ctx := cuecontext.New()
 
-	cueSchemaVal := ctx.CompileString(schema)
-	if cueSchemaVal.Err() != nil {
-		return C.CString(fmt.Sprintf(`{"error": "Invalid schema: %s"}`, cueSchemaVal.Err()))
+	// Validate schema before proceeding
+	if err := validateSchema(ctx, schema); err != nil {
+		return C.CString(fmt.Sprintf(`{"error": "%s"}`, err.Error()))
 	}
 
+	// Compile JSON
 	cueJSONVal := ctx.CompileString(jsonData)
 	if cueJSONVal.Err() != nil {
 		return C.CString(fmt.Sprintf(`{"error": "Invalid JSON: %s"}`, cueJSONVal.Err()))
 	}
 
-	schemaVal := cueSchemaVal.LookupPath(cue.ParsePath("Request"))
+	schemaVal := ctx.CompileString(schema).LookupPath(cue.ParsePath("Request"))
 	jsonVal := cueJSONVal.LookupPath(cue.ParsePath("Request"))
 
 	resultMap := make(map[string]string)
@@ -127,7 +173,6 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 	}
 
 	if attr.Err() == nil {
-		// Decimal exact places
 		if val, found, _ := attr.Lookup(0, "decimal"); found {
 			expected, _ := strconv.Atoi(strings.Trim(val, `"`))
 			actual := getDecimalPlaces(dataField)
@@ -140,8 +185,6 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				return
 			}
 		}
-
-		// Decimal max places
 		if val, found, _ := attr.Lookup(0, "decimal_max"); found {
 			max, _ := strconv.Atoi(strings.Trim(val, `"`))
 			actual := getDecimalPlaces(dataField)
@@ -154,8 +197,6 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				return
 			}
 		}
-
-		// Min characters
 		if val, found, _ := attr.Lookup(0, "min_chars"); found {
 			min, _ := strconv.Atoi(strings.Trim(val, `"`))
 			if len(actualVal) < min {
@@ -167,8 +208,6 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				return
 			}
 		}
-
-		// Max characters
 		if val, found, _ := attr.Lookup(0, "max_chars"); found {
 			max, _ := strconv.Atoi(strings.Trim(val, `"`))
 			if len(actualVal) > max {
@@ -180,8 +219,6 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				return
 			}
 		}
-
-		// Must contain substring
 		if val, found, _ := attr.Lookup(0, "must_contain"); found {
 			sub := strings.Trim(val, `"`)
 			if !strings.Contains(actualVal, sub) {
@@ -193,8 +230,6 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				return
 			}
 		}
-
-		// Must NOT contain substring
 		if val, found, _ := attr.Lookup(0, "must_not_contain"); found {
 			sub := strings.Trim(val, `"`)
 			if strings.Contains(actualVal, sub) {
@@ -206,8 +241,6 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 				return
 			}
 		}
-
-		// Date format validation
 		if val, found, _ := attr.Lookup(0, "date"); found {
 			expectedFormat := strings.Trim(val, `"`)
 			dateStr, err := dataField.String()
@@ -222,7 +255,6 @@ func validateScalar(field string, schemaField, dataField cue.Value, resultMap *m
 		}
 	}
 
-	// CUE core validation
 	if err := schemaField.Unify(dataField).Validate(); err != nil {
 		msg := getCustomMessage(schemaField)
 		if msg == "" {
@@ -312,18 +344,15 @@ func applyListValidations(v cue.Value, values []string) string {
 			return fmt.Sprintf("%s - Missing: [%s], Input Value: [%s]", msg, strings.Join(missing, ", "), strings.Join(values, ", "))
 		}
 	}
-
 	if containsAny != nil && !containsAnyOne(values, containsAny) {
 		return fmt.Sprintf("%s - Expected any of [%s], Input Value: [%s]", msg, strings.Join(containsAny, ", "), strings.Join(values, ", "))
 	}
-
 	if notContains != nil {
 		forbidden := intersect(values, notContains)
 		if len(forbidden) > 0 {
 			return fmt.Sprintf("%s - Invalid values found: [%s], Input Value: [%s]", msg, strings.Join(forbidden, ", "), strings.Join(values, ", "))
 		}
 	}
-
 	return ""
 }
 
