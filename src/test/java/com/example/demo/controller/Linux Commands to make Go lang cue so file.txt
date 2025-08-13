@@ -1,0 +1,31 @@
+From Home check the list of files or folders 
+> ls ~/cuefolder/
+> cd ~/cuefolder
+
+## Remove unsed files 
+> rm cue_validator.go 
+
+Copy from Local to WSL
+cp /mnt/c/Users/Admin/Downloads/cue_validator.go ~/cuefolder/
+cp /mnt/c/Users/Admin/Downloads/go.sum ~/cuefolder/
+
+# if go not install use below commands
+go version
+
+sudo apt update
+sudo apt install golang-go -y
+
+
+go build -buildmode=c-shared -o libcue_validator.so cue_validator.go
+
+#remove if version is not supported 
+vyankra1@DESKTOP-1K4AQ93:~/cuefolder$ sudo rm -rf /usr/local/go
+
+Install manully go version
+
+GO_VERSION=1.22.2
+curl -LO https://go.dev/dl/go$GO_VERSION.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go$GO_VERSION.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+source ~/.bashrc
+
