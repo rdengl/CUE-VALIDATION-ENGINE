@@ -1,0 +1,95 @@
+---------Request Json------------
+
+{
+  "Request": {
+    "age": 15, 
+    "status": "stat", 
+    "username": "myadminuser", 
+    "price_exact": 12.345, 
+    "price_max": 45.6789, 
+    "start_date": "13-2025-08", 
+    "required_items": ["apple"], 
+    "any_items": ["yellow"], 
+    "no_items": ["ok", "forbidden1"], 
+    "address": {
+      "street": "AB", 
+      "zip": "123"
+    },
+    "contacts": [
+      {
+        "name": "", 
+        "phone": "12345"
+      },
+      {
+        "name": "", 
+        "phone": "abcdefghij"
+      }
+    ],
+    "projects": [
+      {
+        "id": "", 
+        "tags": ["low"]
+      }
+    ]
+  }
+}
+
+---------------Cue Schema----------------
+
+
+Request: {
+    // Integer range with min/max value validation
+    age: int & >=18 & <=60 @tag(message="Age must be between 18 and 60", min_chars="1")
+
+    // String with required substring, min/max length
+    status: string & != "" @tag(must_contain="active", min_chars="6", max_chars="20", message="Status must contain 'active' and be 6-20 chars")
+
+    // String must NOT contain certain text
+    username: string & != "" @tag(must_not_contain="admin", message="Username must not contain 'admin'")
+
+    // Decimal precision fixed
+    price_exact: number & > 0 @tag(decimal="2", message="Price must have exactly 2 decimal places")
+
+    // Decimal precision max allowed
+    price_max: number & > 0 @tag(decimal_max="3", message="Price must have at most 3 decimal places")
+
+    // Date format validation
+    start_date: string @tag(date="yyyy-MM-dd", message="Date must be in yyyy-MM-dd format")
+
+    // List validations: must contain all required values
+    required_items: [...string] @tag(required_all="apple,banana", message="Must include apple and banana")
+
+    // List validations: must contain at least one of the given values
+    any_items: [...string] @tag(contains_any="red,blue,green", message="Must contain at least one of red, blue, green")
+
+    // List validations: must NOT contain any of the given values
+    no_items: [...string] @tag(not_contains="forbidden1,forbidden2", message="Must not contain forbidden items")
+
+    // Nested object validation
+    address: {
+        street: string & != "" @tag(min_chars="5", max_chars="50", message="Street name must be between 5-50 characters")
+        zip: string & =~"^[0-9]{5}$" @tag(message="ZIP must be exactly 5 digits")
+    }
+
+    // Array of nested objects with validations
+    contacts: [...{
+        name: string & != "" @tag(message="Contact name must not be empty")
+        phone: string & =~"^[0-9]{10}$" @tag(message="Phone must be 10 digits")
+    }]
+
+    // Combination: parent rule + child structure
+    projects: [...{
+        id: string & != "" @tag(message="Project ID required")
+        tags: [...string] @tag(contains_any="urgent,important", message="Tags must contain 'urgent' or 'important'")
+    }]
+}
+
+
+
+----------Added Escape chars --
+
+
+{
+    "json": "{\r\n  \"Request\": {\r\n    \"age\": 15, \r\n    \"status\": \"stat\", \r\n    \"username\": \"myadminuser\", \r\n    \"price_exact\": 12.345, \r\n    \"price_max\": 45.6789, \r\n    \"start_date\": \"13-2025-08\", \r\n    \"required_items\": [\"apple\"], \r\n    \"any_items\": [\"yellow\"], \r\n    \"no_items\": [\"ok\", \"forbidden1\"], \r\n    \"address\": {\r\n      \"street\": \"AB\", \r\n      \"zip\": \"123\"\r\n    },\r\n    \"contacts\": [\r\n      {\r\n        \"name\": \"\", \r\n        \"phone\": \"12345\"\r\n      },\r\n      {\r\n        \"name\": \"\", \r\n        \"phone\": \"abcdefghij\"\r\n      }\r\n    ],\r\n    \"projects\": [\r\n      {\r\n        \"id\": \"\", \r\n        \"tags\": [\"low\"]\r\n      }\r\n    ]\r\n  }\r\n}\r\n",
+    "schema": "Request: {\r\n    \/\/ Integer range with min\/max value validation\r\n    age: int & >=18 & <=60 @tag(message=\"Age must be between 18 and 60\", min_chars=\"1\")\r\n\r\n    \/\/ String with required substring, min\/max length\r\n    status: string & != \"\" @tag(must_contain=\"active\", min_chars=\"6\", max_chars=\"20\", message=\"Status must contain 'active' and be 6-20 chars\")\r\n\r\n    \/\/ String must NOT contain certain text\r\n    username: string & != \"\" @tag(must_not_contain=\"admin\", message=\"Username must not contain 'admin'\")\r\n\r\n    \/\/ Decimal precision fixed\r\n    price_exact: number & >0 @tag(decimal=\"2\", message=\"Price must have exactly 2 decimal places\")\r\n\r\n    \/\/ Decimal precision max allowed\r\n    price_max: number & >0 @tag(decimal_max=\"3\", message=\"Price must have at most 3 decimal places\")\r\n\r\n    \/\/ Date format validation\r\n    start_date: string @tag(date=\"yyyy-MM-dd\", message=\"Date must be in yyyy-MM-dd format\")\r\n\r\n    \/\/ List validations: must contain all required values\r\n    required_items: [...string] @tag(required_all=\"apple,banana\", message=\"Must include apple and banana\")\r\n\r\n    \/\/ List validations: must contain at least one of the given values\r\n    any_items: [...string] @tag(contains_any=\"red,blue,green\", message=\"Must contain at least one of red, blue, green\")\r\n\r\n    \/\/ List validations: must NOT contain any of the given values\r\n    no_items: [...string] @tag(not_contains=\"forbidden1,forbidden2\", message=\"Must not contain forbidden items\")\r\n\r\n    \/\/ Nested object validation\r\n    address: {\r\n        street: string & != \"\" @tag(min_chars=\"5\", max_chars=\"50\", message=\"Street name must be between 5-50 characters\")\r\n        zip: string & =~\"^[0-9]{5}$\" @tag(message=\"ZIP must be exactly 5 digits\")\r\n    }\r\n\r\n    \/\/ Array of nested objects with validations\r\n    contacts: [...{\r\n        name: string & != \"\" @tag(message=\"Contact name must not be empty\")\r\n        phone: string & =~\"^[0-9]{10}$\" @tag(message=\"Phone must be 10 digits\")\r\n    }]\r\n\r\n    \/\/ Combination: parent rule + child structure\r\n    projects: [...{\r\n        id: string & != \"\" @tag(message=\"Project ID required\")\r\n        tags: [...string] @tag(contains_any=\"urgent,important\", message=\"Tags must contain 'urgent' or 'important'\")\r\n    }]\r\n}\r\n"
+}
