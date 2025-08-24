@@ -107,6 +107,7 @@ public class CueValidationController {
 				""";
 
 
+
 		System.out.println("json: "+request.getJson());
 		System.out.println("Schema: "+request.getSchema());
 
